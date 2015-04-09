@@ -13,15 +13,45 @@ int packet;
 int start;
 int TempAddress = 64; // I2C address of TMP006
 int HRAddress = 96;  //I2C Address of SI1146
-int FRAMReadAddress=161; //I2C Address for FRAM Read
-int FRAMWriteAddress=160;  //I2C Address for FRAM Write
+int FRAMAddress=80; //I2C Address for FRAM 
+int ExpAddress=32;
+int 
+
 int samples = TMP006_CFG_8SAMPLE; // # of samples per reading, can be 1/2/4/8/16
 
-void setup() {
+void setup() 
+{
   Wire.begin(); // join i2c bus (address optional for master)
+  expanderSetInput(INaddr, 0xFF);
   Serial.begin(57600);
   Serial.println("Waiting for connection...");
   RFduinoBLE.begin();
+}
+  
+  // I2C routines to talk to 8574 and 8574A
+  void expanderSetInput(int i2caddr, byte dir) {
+  Wire.beginTransmission(INaddr);
+  Wire.send(dir);  // outputs high for input
+  Wire.endTransmission();    
+}
+
+byte expanderRead(int i2caddr) {
+  int _data = -1;
+  Wire.requestFrom(i2caddr, 1);
+  if(Wire.available()) {
+    _data = Wire.receive();
+  }
+  return _data;
+}
+
+void expanderWrite(int i2caddr, byte data)
+{
+  Wire.beginTransmission(i2caddr);
+  Wire.send(data);
+  Wire.endTransmission();   
+}
+  
+ 
 }
 
 void RFduinoBLE_onConnect() {
@@ -40,9 +70,13 @@ void loop() {
   Wire.beginTransmission(HRAddress);  // transmit to SI1146 Heart Rate Monitor device #96 (0x60)
   
   Wire.beginTransmission(TempAddress); // transmit to TMP006 Temp Sensor device #64 (0x40)
- 
   
-  Wire.beginTransmission(FRAMWriteAddress); //transmit to FRAM (Write Address) device #160 (0xa0)
+  Wire.beginTransmission(ExpAddress);// transmit to GPIIO device #32 (0x20)
+  Wire.write(
+  
+  Wire.beginTransmission(FRAMAddress); //transmit to FRAM device #160 (0x50)
+  
+  
  
                                
 
