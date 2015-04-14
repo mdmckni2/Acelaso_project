@@ -99,6 +99,8 @@ void loop() {
   
   //Galvanic Skin Response Read
   float gsr = analogRead(4);
+  Serial.print("Galvanic Skin Response: "; Serial.print(gsr); 
+ 
   
   Wire.beginTransmission(ExpAddress);// transmit to GPIIO device #32 (0x20)
 
