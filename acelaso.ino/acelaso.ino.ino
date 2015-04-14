@@ -1,5 +1,6 @@
 #include <RFduinoBLE.h>
 #include "Adafruit_FRAM_I2C.h"
+#include <Wire.h>
 
 // send 500 20 byte buffers = 10000 bytes
 int packets = 500; 
@@ -66,9 +67,10 @@ void RFduinoBLE_onConnect() {
 void loop() {
   RFduino_ULPDelay( SECONDS(1) );
   
-  //Heart Rate Monitor
+  //Heart Rate Monitor Read 
   Wire.beginTransmission(HRAddress);  // transmit to SI1146 Heart Rate Monitor device #96 (0x60)
   
+  //Temperature Sensor Read
   Wire.beginTransmission(TempAddress); // transmit to TMP006 Temp Sensor device #64 (0x40)
   
   Wire.beginTransmission(ExpAddress);// transmit to GPIIO device #32 (0x20)
