@@ -1,6 +1,4 @@
 
-
-
 #include <SI114.h>
 #include <Si114_defs.h>
 #include <Adafruit_FRAM_I2C.h>
@@ -34,7 +32,7 @@ uint16_t          framAddr = 0;
 void setup() 
 {
   Wire.begin(); // join i2c bus (address optional for master)
-  expanderSetInput(INaddr, 0xFF);
+  expanderSetInput(ExpAddress, 0xFF);
   Serial.begin(57600);
   Serial.println("Waiting for connection...");
   RFduinoBLE.begin();
@@ -57,8 +55,8 @@ void setup()
   
   // I2C routines to talk to 8574 and 8574A
   void expanderSetInput(int i2caddr, byte dir) {
-  Wire.beginTransmission(INaddr);
-  Wire.send(dir);  // outputs high for input
+  Wire.beginTransmission(ExpAddress);
+  Wire.write(dir);  // outputs high for input
   Wire.endTransmission();    
 }
 
@@ -66,7 +64,7 @@ byte expanderRead(int i2caddr) {
   int _data = -1;
   Wire.requestFrom(i2caddr, 1);
   if(Wire.available()) {
-    _data = Wire.receive();
+    _data = Wire.read();
   }
   return _data;
 }
@@ -74,11 +72,8 @@ byte expanderRead(int i2caddr) {
 void expanderWrite(int i2caddr, byte data)
 {
   Wire.beginTransmission(i2caddr);
-  Wire.send(data);
+  Wire.write(data);
   Wire.endTransmission();   
-}
-  
- 
 }
 
 void RFduinoBLE_onConnect() {
