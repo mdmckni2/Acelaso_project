@@ -88,6 +88,8 @@ void loop() {
   float diet = tmp006.readDieTempC();
   Serial.print("Die Temperature: "); Serial.print(diet); Serial.println("*C");
   
+  //Galvanic Skin Response Read
+  float gsr = analogRead(4);
   
   Wire.beginTransmission(ExpAddress);// transmit to GPIIO device #32 (0x20)
 
