@@ -7,8 +7,8 @@
 
 
 #include "SI114.h"
-#include <avr/sleep.h>
-#include <util/atomic.h>
+//#include <avr/sleep.h>
+//#include <util/atomic.h>
 
 // flag bits sent to the receiver
 #define MODE_CHANGE 0x80    // a pin mode was changed
