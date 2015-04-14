@@ -1,8 +1,9 @@
-#include <Adafruit_Sensor.h>
 #include <Adafruit_FRAM_I2C.h>
 #include <Adafruit_TMP006.h>
+#include <Adafruit_Sensor.h>
 #include <RFduinoBLE.h>
 #include <Wire.h>
+
 
 // send 500 20 byte buffers = 10000 bytes
 int packets = 500; 
@@ -32,7 +33,7 @@ void setup()
   Serial.println("Waiting for connection...");
   RFduinoBLE.begin();
   
-  //Check to 
+  //Check to see if temperature sensor is found
   if (! tmp006.begin()) {
     Serial.println("No temperature sensor found");
     while (1);
@@ -81,10 +82,15 @@ void loop() {
   Wire.beginTransmission(HRAddress);  // transmit to SI1146 Heart Rate Monitor device #96 (0x60)
   
   //Temperature Sensor Read
-  Wire.beginTransmission(TempAddress); // transmit to TMP006 Temp Sensor device #64 (0x40)
+ // Grab temperature measurements and print them.
+  float objt = tmp006.readObjTempC();
+  Serial.print("Object Temperature: "); Serial.print(objt); Serial.println("*C");
+  float diet = tmp006.readDieTempC();
+  Serial.print("Die Temperature: "); Serial.print(diet); Serial.println("*C");
+  
   
   Wire.beginTransmission(ExpAddress);// transmit to GPIIO device #32 (0x20)
-  Wire.write(
+
   
   Wire.beginTransmission(FRAMAddress); //transmit to FRAM device #160 (0x50)
   
