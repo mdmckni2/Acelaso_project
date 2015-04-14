@@ -1,8 +1,8 @@
-
-#include <RFduinoBLE.h>
-#include <Wire.h>
+#include <Adafruit_Sensor.h>
 #include <Adafruit_FRAM_I2C.h>
 #include <Adafruit_TMP006.h>
+#include <RFduinoBLE.h>
+#include <Wire.h>
 
 // send 500 20 byte buffers = 10000 bytes
 int packets = 500; 
