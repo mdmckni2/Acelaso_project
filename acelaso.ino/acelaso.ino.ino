@@ -1,4 +1,6 @@
 
+
+
 #include <SI114.h>
 #include <Si114_defs.h>
 #include <Adafruit_FRAM_I2C.h>
@@ -43,7 +45,7 @@ void setup()
     while (1);
   }
   
-  //Check 
+  //Check to ensure that FRAM device is found
   if (fram.begin()) {  // you can stick the new i2c addr in here, e.g. begin(0x51);
     Serial.println("Found I2C FRAM");
   } else {
