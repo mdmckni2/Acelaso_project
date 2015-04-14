@@ -1,6 +1,7 @@
 #include <RFduinoBLE.h>
 #include "Adafruit_FRAM_I2C.h"
 #include <Wire.h>
+#include "Adafruit_TMP006.h"
 
 // send 500 20 byte buffers = 10000 bytes
 int packets = 500; 
@@ -16,9 +17,11 @@ int TempAddress = 64; // I2C address of TMP006
 int HRAddress = 96;  //I2C Address of SI1146
 int FRAMAddress=80; //I2C Address for FRAM 
 int ExpAddress=32;
-int 
 
 int samples = TMP006_CFG_8SAMPLE; // # of samples per reading, can be 1/2/4/8/16
+
+Adafruit_TMP006 tmp006;
+//Adafruit_TMP006 tmp006(0x41);  // start with a diferent i2c address!
 
 void setup() 
 {
@@ -27,6 +30,12 @@ void setup()
   Serial.begin(57600);
   Serial.println("Waiting for connection...");
   RFduinoBLE.begin();
+  
+  //Check to 
+  if (! tmp006.begin()) {
+    Serial.println("No temperature sensor found");
+    while (1);
+  }
 }
   
   // I2C routines to talk to 8574 and 8574A
