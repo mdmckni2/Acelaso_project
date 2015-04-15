@@ -30,9 +30,14 @@ uint16_t          framAddr = 0;
 
 void setup()
 {
-  Wire.begin(); // join i2c bus (address optional for master)
+  override_uart_limit = true;
+  
+  //Wire.begin(); // join i2c bus (address optional for master)
+  Wire.beginOnPins (6u,5u);
+  
   expanderSetInput(ExpAddress, 0xFF);
-  Serial.begin(57600);
+    Serial.begin(9600);
+  //Serial.begin(57600);
   Serial.println("Waiting for connection...");
   RFduinoBLE.begin();
 
@@ -42,13 +47,13 @@ void setup()
     while (1);
   }
 
-  //Check to ensure that FRAM device is found
-  if (fram.begin()) {  // you can stick the new i2c addr in here, e.g. begin(0x51);
-    Serial.println("Found I2C FRAM");
-  } else {
-    Serial.println("No I2C FRAM found ... check your connections\r\n");
-    while (1);
-  }
+//  //Check to ensure that FRAM device is found
+//  if (fram.begin()) {  // you can stick the new i2c addr in here, e.g. begin(0x51);
+//    Serial.println("Found I2C FRAM");
+//  } else {
+//    Serial.println("No I2C FRAM found ... check your connections\r\n");
+//    while (1);
+//  }
 
 }
 
@@ -98,13 +103,8 @@ void loop() {
 
   //Galvanic Skin Response Read
   float gsr = analogRead(4);
-<<<<<<< HEAD
-  Serial.print("Galvanic Skin Response: "; Serial.print(gsr); 
- 
+  Serial.print("Galvanic Skin Response: "); Serial.println(gsr); 
   
-=======
-
->>>>>>> bf7bdbe6b6d60ebf589702f1cb28403f4b12bccb
   Wire.beginTransmission(ExpAddress);// transmit to GPIIO device #32 (0x20)
 
   Wire.beginTransmission(FRAMAddress); //transmit to FRAM device #160 (0x50)

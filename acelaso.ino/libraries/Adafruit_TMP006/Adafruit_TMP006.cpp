@@ -26,8 +26,9 @@ Adafruit_TMP006::Adafruit_TMP006(uint8_t i2caddr) {
 
 
 boolean Adafruit_TMP006::begin(uint8_t samplerate) {
-  Wire.begin();
-
+  //Wire.begin();
+  Wire.beginOnPins (6u,5u);
+  
   write16(TMP006_CONFIG, TMP006_CFG_MODEON | TMP006_CFG_DRDYEN | samplerate);
 
   uint16_t mid, did;

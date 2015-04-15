@@ -38,7 +38,7 @@
 #endif
 
 // uncomment for debugging!
-//#define TMP006_DEBUG 1
+// #define TMP006_DEBUG 1
 
 #define TMP006_CONFIG     0x02
 
