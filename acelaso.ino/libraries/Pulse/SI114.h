@@ -22,6 +22,16 @@
 class Port {
 protected:
     uint8_t portNum;
+    
+//TRY THIS FOR RFDUINO
+  //   inline uint8_t digiPin() const	//SDA
+//         { return 5; }
+//     inline uint8_t digiPin2() const	//SCL
+//         { return 6; }
+//     static uint8_t digiPin3()		//IRQ
+//         { return 2; }
+//     inline uint8_t anaPin() const	//No idea what this is for
+//     	{ return 0; }
 
 #if defined(__AVR_ATtiny85__)
     inline uint8_t digiPin() const

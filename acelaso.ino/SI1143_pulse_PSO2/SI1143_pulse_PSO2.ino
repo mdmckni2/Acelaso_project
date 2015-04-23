@@ -13,7 +13,7 @@
 
 #include <SI114.h>
 
-const int portForSI114 = 1;        // change to the JeeNode port number used
+const int portForSI114 = 4;        // change to the JeeNode port number used
 
 /*
  For Arduino users just use the following pins for various port settings
@@ -76,6 +76,7 @@ void setup () {
 
 void loop() {
   readPulseSensor();
+  delay(1000);
 }
 
 
@@ -125,7 +126,7 @@ void initPulseSensor() {
   pulse.setReg(PulsePlug::PS_LED21, 0x39);      // LED current for 2 (IR1 - high nibble) & LEDs 1 (red - low nibble)
   pulse.setReg(PulsePlug::PS_LED3, 0x02);       // LED current for LED 3 (IR2)
 
-  debug infor for the led currents
+  //debug info for the led currents
   Serial.print( "PS_LED21 = ");
   Serial.println(pulse.getReg(PulsePlug::PS_LED21), BIN);
   Serial.print("CHLIST = ");
