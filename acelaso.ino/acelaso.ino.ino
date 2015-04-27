@@ -377,8 +377,9 @@ void initPulseSensor() {
 
 //--------------------------------------------------------------------------------------------
 //int SI1146_Test(int i2caddr) {
+//  int id;
 //  Wire.beginTransmission(i2caddr);
-//  char id = Wire.read(SI114_REG_PART_ID);
+//  id = Wire.read(SI114_REG_PART_ID);
 //  Wire.endTransmission();
 //  if (id == 0x46)
 //    return 1; // look for SI1145
