@@ -13,7 +13,7 @@ int HRAddress = 96;  //I2C Address of SI1146
 int FRAMAddress = 80; //I2C Address for FRAM
 int interval = 500; //500 ms between advertisement transmission
 int ExpanderAddress = B0111000;
-int samples = TMP006_CFG_8SAMPLE; // # of samples per reading, can be 1/2/4/8/16
+int samples = TMP006_CFG_8SAMPLE; // # of samples per reading, can be 1 / 2 / 4 / 8 / 16
 int lastButtonState = LOW;
 long button_holdtime = 2000;
 int ledflash = 5;
@@ -32,7 +32,6 @@ char state = 0;
 #define ON 1
 #define OFF 0
 
-//------------------------------------------------------------------
 const int SAMPLES_TO_AVERAGE = 5; // samples for smoothing 1 to 10 seem useful 5 is default
 // increase for smoother waveform (with less resolution - slower!)
 int binOut; // 1 or 0 depending on state of heartbeat
@@ -41,15 +40,10 @@ unsigned long red;        // read value from visible red LED
 unsigned long IR1;        // read value from infrared LED1
 unsigned long IR2;       // read value from infrared LED2
 unsigned long IR_total;     // IR LED reads added together
-
-const int portForSI114 = 1;        // change to the JeeNode port number used
-PortI2C myBus (portForSI114);
-PulsePlug pulse (myBus);
-//------------------------------------------------------------------
-
+unsigned int resp, als_vis, als_ir, ps1, ps2, ps3;
 
 void setup()
-{  
+{
   override_uart_limit = true;
 
   //Wire.begin(); // join i2c bus (address optional for master)
@@ -84,8 +78,8 @@ void setup()
 
   //Init Heart Rate Sensor
   //initPulseSensor();
-  
-    LED_OFF();
+
+  LED_OFF();
 }
 
 void expanderWrite(int i2caddr, byte data)
@@ -98,6 +92,7 @@ void expanderWrite(int i2caddr, byte data)
 void RFduinoBLE_onConnect() {
   Serial.println("RFduino BLE connection successful");
   BLUE_LED_ON();
+  state = POLL_SENSORS;
 }
 
 void RFduinoBLE_onDisconnect() {
@@ -113,7 +108,7 @@ void RFduinoBLE_onAdvertisement(bool start) {
     GREEN_LED_ON();
   }
   else {
-   LED_OFF(); 
+    LED_OFF();
   }
 }
 
@@ -124,8 +119,8 @@ void RFduinoBLE_onReceive(char *data, int len) {
 }
 
 void RFduinoBLE_onRSSI(int rssi) {
-  Serial.print("RFduino BLE RSSI: ");
-  Serial.println(rssi); // print rssi value via serial
+  //  Serial.print("RFduino BLE RSSI: ");
+  //  Serial.println(rssi); // print rssi value via serial
 }
 
 void LED_OFF() {
@@ -136,16 +131,16 @@ void LED_ON() {
   expanderWrite(ExpanderAddress, 0x00);
 }
 
+void GREEN_LED_ON() {
+  expanderWrite(ExpanderAddress, 0xF7);
+}
+
 void RED_LED_ON() {
-  expanderWrite(ExpanderAddress, 0xFE);
+  expanderWrite(ExpanderAddress, 0xEF);
 }
 
 void BLUE_LED_ON() {
-  expanderWrite(ExpanderAddress, 0xFD);
-}
-
-void GREEN_LED_ON() {
-  expanderWrite(ExpanderAddress, 0xFB);
+  expanderWrite(ExpanderAddress, 0xDF);
 }
 
 void LED_FLASH() {      //Flash Green LED for a few seconds
@@ -160,6 +155,66 @@ void LED_FLASH() {      //Flash Green LED for a few seconds
 
 //--------------------------------------------------------------------------------------------
 // New Code Section for Heart Rate
+
+int SI1146_Test(int i2caddr) {
+  int id;
+  id = HR_read_reg(SI114_REG_PART_ID, 1);
+  Serial.print("Part id: ");  Serial.println(id);
+  if (id == 0x46)
+    return 1; // look for SI1145
+  //DEVICE FOUND Reset SI1146 Registers
+  return 0;
+}
+
+//This was get reg, num_data is number of bytes to return
+char HR_read_reg(unsigned char address, int num_data) // Read a Register
+{
+  Wire.beginTransmission(HRAddress);
+  Wire.write(address);
+  Wire.endTransmission();
+  Wire.requestFrom(HRAddress, num_data);
+  while (Wire.available() < num_data);
+  return Wire.read();
+}
+
+//This was set reg
+void HR_write_reg(byte address, byte val) {  // Write a resigter
+  Wire.beginTransmission(HRAddress);
+  Wire.write(address);
+  Wire.write(val);
+  Wire.endTransmission();
+}
+
+byte HR_read_param(byte addr) {
+  // read from parameter ram
+  Wire.beginTransmission(HRAddress);
+  Wire.write(SI114_REG_COMMAND);
+  Wire.write(0x80 | addr);
+  Wire.endTransmission();
+  return HR_read_reg(SI114_REG_PARAM_RD, 1);
+}
+
+void HR_write_param(byte addr, byte val) {
+  // write to parameter ram
+  Wire.beginTransmission(HRAddress);
+  Wire.write(SI114_REG_PARAM_WR);
+  Wire.write(val);
+  // auto-increments into SI114_REG_COMMAND
+  Wire.write(0xA0 | addr); // PARAM_SET
+  Wire.endTransmission();
+}
+
+void fetchLedData() {
+  // read only the LED registers as lsb-msb pairs of bytes
+  Wire.beginTransmission(HRAddress);
+  Wire.write(SI114_REG_PS1_DATA0);
+  Wire.endTransmission();
+  byte* p = (byte*) &resp;
+  Wire.requestFrom(HRAddress, 6);
+  while (Wire.available() < 6);
+  p = (byte*) Wire.read();
+  Wire.endTransmission();
+}
 
 float smooth(float data, float filterVal, float smoothedVal) {
 
@@ -179,9 +234,13 @@ void readPulseSensor() {
   static int foundNewFinger, red_signalSize, red_smoothValley;
   static long red_valley, red_Peak, red_smoothRedPeak, red_smoothRedValley,
          red_HFoutput, red_smoothPeak; // for PSO2 calc
-  static  int IR_valley = 0, IR_peak = 0, IR_smoothPeak, IR_smoothValley, binOut, lastBinOut, BPM;
-  static unsigned long lastTotal, lastMillis, IRtotal, valleyTime = millis(), lastValleyTime = millis(), peakTime = millis(), lastPeakTime = millis(), lastBeat, beat;
-  static float IR_baseline, red_baseline, IR_HFoutput, IR_HFoutput2, shiftedOutput, LFoutput, hysterisis;
+  static  int IR_valley = 0, IR_peak = 0, IR_smoothPeak, IR_smoothValley,
+              binOut, lastBinOut, BPM;
+  static unsigned long lastTotal, lastMillis, IRtotal, valleyTime =
+    millis(), lastValleyTime = millis(), peakTime = millis(), lastPeakTime =
+                                 millis(), lastBeat, beat;
+  static float IR_baseline, red_baseline, IR_HFoutput, IR_HFoutput2,
+         shiftedOutput, LFoutput, hysterisis;
 
   unsigned long total = 0, start;
   int i = 0;
@@ -193,10 +252,10 @@ void readPulseSensor() {
   start = millis();
 
   while (i < SAMPLES_TO_AVERAGE) {
-    pulse.fetchLedData();
-    red += pulse.ps1;
-    IR1 += pulse.ps2;
-    IR2 += pulse.ps3;
+    fetchLedData();
+    red += ps1;
+    IR1 += ps2;
+    IR2 += ps3;
     i++;
   }
 
@@ -224,7 +283,7 @@ void readPulseSensor() {
   else if (total > 20000L) {   // main running function
 
     // baseline is the moving average of the signal - the middle of the waveform
-    // the idea here is to keep track of a high frequency signal, HFoutput and a
+    // the idea here is to keep track of a high frequency signal, HF outputand a
     // low frequency signal, LFoutput
     // The LF signal is shifted downward slightly downward (heartbeats are negative peaks)
     // The high freq signal has some hysterisis added.
@@ -249,10 +308,12 @@ void readPulseSensor() {
 
     // default reset - only if reset fails to occur for 1800 ms
     if (millis() - lastPeakTime > 1800) { // reset peak detector slower than lowest human HB
-      IR_smoothPeak =  smooth((float)IR_peak, 0.6, (float)IR_smoothPeak);  // smooth peaks
+      IR_smoothPeak =  smooth((float)IR_peak, 0.6, (float)IR_smoothPeak);
+      // smooth peaks
       IR_peak = 0;
 
-      red_smoothPeak =  smooth((float)red_Peak, 0.6, (float)red_smoothPeak);  // smooth peaks
+      red_smoothPeak =  smooth((float)red_Peak, 0.6,
+                               (float)red_smoothPeak);  // smooth peaks
       red_Peak = 0;
 
       lastPeakTime = millis();
@@ -270,7 +331,8 @@ void readPulseSensor() {
 
 
     if (millis() - lastValleyTime > 1800) { // insure reset slower than lowest human HB
-      IR_smoothValley =  smooth((float)IR_valley, 0.6, (float)IR_smoothValley);  // smooth valleys
+      IR_smoothValley =  smooth((float)IR_valley, 0.6,
+                                (float)IR_smoothValley);  // smooth valleys
       IR_valley = 0;
       lastValleyTime = millis();
     }
@@ -288,11 +350,13 @@ void readPulseSensor() {
       binOut = 1;
       //   Serial.println("\t1");
       hysterisis = -hysterisis;
-      IR_smoothValley =  smooth((float)IR_valley, 0.99, (float)IR_smoothValley);  // smooth valleys
+      IR_smoothValley =  smooth((float)IR_valley, 0.99,
+                                (float)IR_smoothValley);  // smooth valleys
       IR_signalSize = IR_smoothPeak - IR_smoothValley;
       IR_valley = 0x7FFF;
 
-      red_smoothValley =  smooth((float)red_valley, 0.99, (float)red_smoothValley);  // smooth valleys
+      red_smoothValley =  smooth((float)red_valley, 0.99,
+                                 (float)red_smoothValley);  // smooth valleys
       red_signalSize = red_smoothPeak - red_smoothValley;
       red_valley = 0x7FFF;
 
@@ -303,10 +367,12 @@ void readPulseSensor() {
       Serial.println("\t0");
       lastBinOut = binOut;
       binOut = 0;
-      IR_smoothPeak =  smooth((float)IR_peak, 0.99, (float)IR_smoothPeak);  // smooth peaks
+      IR_smoothPeak =  smooth((float)IR_peak, 0.99, (float)IR_smoothPeak);
+      // smooth peaks
       IR_peak = 0;
 
-      red_smoothPeak =  smooth((float)red_Peak, 0.99, (float)red_smoothPeak);  // smooth peaks
+      red_smoothPeak =  smooth((float)red_Peak, 0.99,
+                               (float)red_smoothPeak);  // smooth peaks
       red_Peak = 0;
       lastPeakTime = millis();
     }
@@ -326,78 +392,70 @@ void readPulseSensor() {
       Serial.print(IR_signalSize);
       Serial.print("\t PSO2 ");
       Serial.println(((float)red_baseline / (float)(IR_baseline / 2)), 3);
+      RFduinoBLE.sendFloat(0x08);
+      delay(75);
+      RFduinoBLE.sendByte(BPM);
+      delay(75);
     }
   }
 }
-
 void initPulseSensor() {
 
-  pulse.setReg(PulsePlug::HW_KEY, 0x17);
-  // pulse.setReg(pulse::COMMAND, pulse::RESET_Cmd);
+  HR_write_reg(SI114_REG_HW_KEY, 0x17);
+  // HR_write_reg(pulse::COMMAND, pulse::RESET_Cmd);
 
   Serial.print("PART: ");
-  Serial.print(pulse.getReg(PulsePlug::PART_ID));
+  Serial.print(HR_read_reg(SI114_REG_PART_ID, 1));
   Serial.print(" REV: ");
-  Serial.print(pulse.getReg(PulsePlug::REV_ID));
+  Serial.print(HR_read_reg(SI114_REG_REV_ID, 1));
   Serial.print(" SEQ: ");
-  Serial.println(pulse.getReg(PulsePlug::SEQ_ID));
+  Serial.println(HR_read_reg(SI114_REG_SEQ_ID, 1));
 
-  pulse.setReg(PulsePlug::INT_CFG, 0x03);       // turn on interrupts
-  pulse.setReg(PulsePlug::IRQ_ENABLE, 0x10);    // turn on interrupt on PS3
-  pulse.setReg(PulsePlug::IRQ_MODE2, 0x01);     // interrupt on ps3 measurement
-  pulse.setReg(PulsePlug::MEAS_RATE, 0x84);     // see datasheet
-  pulse.setReg(PulsePlug::ALS_RATE, 0x08);      // see datasheet
-  pulse.setReg(PulsePlug::PS_RATE, 0x08);       // see datasheet
-  pulse.setReg(PulsePlug::PS_LED21, 0x66 );      // LED current for LEDs 1 (red) & 2 (IR1)
-  pulse.setReg(PulsePlug::PS_LED3, 0x06);        // LED current for LED 3 (IR2)
+  HR_write_reg(SI114_REG_IRQ_CFG, 0x03);       // turn on interrupts
+  HR_write_reg(SI114_REG_IRQ_ENABLE, 0x10);    // turn on interrupt on PS3
+  HR_write_reg(SI114_REG_IRQ_MODE2, 0x01);     // interrupt on ps3 measurement
+  HR_write_reg(SI114_REG_MEAS_RATE, 0x84);     // see datasheet
+  HR_write_reg(SI114_REG_ALS_RATE, 0x08);      // see datasheet
+  HR_write_reg(SI114_REG_PS_RATE, 0x08);       // see datasheet
+  HR_write_reg(SI114_REG_PS_LED21, 0x66 );      // LED current for LEDs 1 (red) & 2 (IR1)
+  HR_write_reg(SI114_REG_PS_LED3, 0x06);        // LED current for LED 3 (IR2)
 
   Serial.print( "PS_LED21 = ");
-  Serial.println(pulse.getReg(PulsePlug::PS_LED21), BIN);
+  Serial.println(HR_read_reg(SI114_REG_PS_LED21, 1), BIN);
   Serial.print("CHLIST = ");
-  Serial.println(pulse.readParam(0x01), BIN);
+  Serial.println(HR_read_param(0x01), BIN);
 
-  pulse.writeParam(PulsePlug::PARAM_CH_LIST, 0x77);         // all measurements on
+  HR_write_param(SI114_PARAM_CH_LIST, 0x77);         // all measurements on
 
   // increasing PARAM_PS_ADC_GAIN will increase the LED on time and ADC window
   // you will see increase in brightness of visible LED's, ADC output, & noise
   // datasheet warns not to go beyond 4 because chip or LEDs may be damaged
-  pulse.writeParam(PulsePlug::PARAM_PS_ADC_GAIN, 0x00);
+  HR_write_param(SI114_PARAM_PS_ADC_GAIN, 0x03);
 
-  pulse.writeParam(PulsePlug::PARAM_PSLED12_SELECT, 0x21);  // select LEDs on for readings see datasheet
-  pulse.writeParam(PulsePlug::PARAM_PSLED3_SELECT, 0x04);   //  3 only
-  pulse.writeParam(PulsePlug::PARAM_PS1_ADCMUX, 0x03);      // PS1 photodiode select
-  pulse.writeParam(PulsePlug::PARAM_PS2_ADCMUX, 0x03);      // PS2 photodiode select
-  pulse.writeParam(PulsePlug::PARAM_PS3_ADCMUX, 0x03);      // PS3 photodiode select
+  HR_write_param(SI114_PARAM_PSLED12_SELECT, 0x21);  // select LEDs on for readings see datasheet
+  HR_write_param(SI114_PARAM_PSLED3_SELECT, 0x04);   //  3 only
+  HR_write_param(SI114_PARAM_PS1_ADC_MUX, 0x03);      // PS1 photodiode select
+  HR_write_param(SI114_PARAM_PS2_ADC_MUX, 0x03);      // PS2 photodiode select
+  HR_write_param(SI114_PARAM_PS3_ADC_MUX, 0x03);      // PS3 photodiode select
 
-  pulse.writeParam(PulsePlug::PARAM_PS_ADC_COUNTER, B01110000);    // B01110000 is default
-  pulse.setReg(PulsePlug::COMMAND, PulsePlug::PSALS_AUTO_Cmd);     // starts an autonomous read loop
-  Serial.println(pulse.getReg(PulsePlug::CHIP_STAT), HEX);
+  HR_write_param(SI114_PARAM_PS_ADC_COUNTER, B01110000);    // B01110000 is default
+  HR_write_reg(SI114_REG_COMMAND, B00001111);     // starts an autonomous read loop
+  Serial.println(HR_read_reg(SI114_REG_CHIP_STAT, 1), HEX);
   Serial.print("end init");
 }
 
-//--------------------------------------------------------------------------------------------
-//int SI1146_Test(int i2caddr) {
-//  int id;
-//  Wire.beginTransmission(i2caddr);
-//  id = Wire.read(SI114_REG_PART_ID);
-//  Wire.endTransmission();
-//  if (id == 0x46)
-//    return 1; // look for SI1145
-//  //DEVICE FOUND Reset SI1146 Registers
-//  return 0;
-//}
-
-//--------------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------
 
 void loop() {
   Serial.println("Top of Main");
 
   //Detect button Press
   if (RFduino_pinWoke(3)) {
-    RFduino_resetPinWake(3); // reset state of pin that caused wakeup (Must do this)
+    //RFduino_resetPinWake(3); // reset state of pin that caused wakeup (Must do this)
     Serial.println("Button Press!");
     state = BLUETOOTH;
     delay(2500);
+    RFduino_resetPinWake(3); // reset state of pin that caused wakeup (Must do this)
   }
 
   //Poll Sensors if time expired
@@ -409,23 +467,48 @@ void loop() {
 
     //Heart Rate Monitor Read
     Wire.beginTransmission(HRAddress);  // transmit to SI1146 Heart Rate Monitor device #96 (0x60)
-    //readPulseSensor();
+    Serial.println("Heart Rate Read Attempt");
+    readPulseSensor();
     //---> Insert into FRAM
-
 
     // Grab temperature measurements and print them.
     float objt = tmp006.readObjTempC();
-    Serial.print("Object Temperature: "); Serial.print(objt); Serial.println("*C");
+    objt = objt * (9 / 5) + 32;
+    Serial.print("Object Temperature: "); Serial.print(objt);
+    Serial.println("*F");
     float diet = tmp006.readDieTempC();
-    Serial.print("Die Temperature: "); Serial.print(diet); Serial.println("*C");
+    diet = diet * (9 / 5) + 32;
+    Serial.print("Die Temperature: "); Serial.print(diet);
+    Serial.println("*F");
+    RFduinoBLE.sendByte(0x05);
+    delay(75);
     RFduinoBLE.sendFloat(objt);
+    delay(75);
+    RFduinoBLE.sendByte(0x06);
+    delay(75);
+    RFduinoBLE.sendFloat(diet);
+    delay(75);
+
     //---> Insert into FRAM
 
     //Galvanic Skin Response Read
     float gsr = analogRead(4);
     Serial.print("Galvanic Skin Response: "); Serial.println(gsr);
+    RFduinoBLE.sendByte(0x07);
+    delay(75);
     RFduinoBLE.sendFloat(gsr);
+    delay(75);
     //---> Insert into FRAM
+
+    //    // Add Floats together to send in a single BLE.send
+    //   char output[4];
+    //    //first we add the time stamp (4 bytes)
+    //   long objt_long = objt;
+    //
+    //    for (int j = 0; j < 4; j++){
+    //      output[4-j]=(char)(objt_long >> (8*j) & 0xFF);
+    //    }
+    //    RFduinoBLE.send(objt);
 
     //Reset State
     state = POLL_SENSORS;
@@ -439,12 +522,6 @@ void loop() {
     delay(1000);
     LED_OFF();
     delay(1000);
-
-    Serial.println("Heart Rate Read Attempt");
-    readPulseSensor();
-
-    //    SI1146_Test(HRAddress);
-
     RED_LED_ON();
     delay(1000);
     LED_OFF();
@@ -474,8 +551,6 @@ void loop() {
 
   Serial.println("Bottom of Main");
   //Sleep for 5 minutes or until interrupt
-  RFduino_ULPDelay(MINUTES(1));
+  RFduino_ULPDelay(SECONDS(10));
 
 }
-
-
