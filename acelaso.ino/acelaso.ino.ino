@@ -36,6 +36,8 @@ const int SAMPLES_TO_AVERAGE = 5; // samples for smoothing 1 to 10 seem useful 5
 // increase for smoother waveform (with less resolution - slower!)
 int binOut; // 1 or 0 depending on state of heartbeat
 int BPM;
+int IR_signalSize;  //THIS COULD BREAK THINGS
+float pso2;
 unsigned long red;        // read value from visible red LED
 unsigned long IR1;        // read value from infrared LED1
 unsigned long IR2;       // read value from infrared LED2
@@ -77,7 +79,7 @@ void setup()
   //  }
 
   //Init Heart Rate Sensor
-  //initPulseSensor();
+  initPulseSensor();
 
   LED_OFF();
 }
@@ -205,15 +207,28 @@ void HR_write_param(byte addr, byte val) {
 }
 
 void fetchLedData() {
+  //  // read only the LED registers as lsb-msb pairs of bytes
+  //  Wire.beginTransmission(HRAddress);
+  //  Wire.write(SI114_REG_PS1_DATA0);
+  //  Wire.endTransmission();
+  //  byte* p = (byte*) &ps1;
+  //  Wire.requestFrom(HRAddress, 6);
+  //  while (Wire.available() < 6);
+  //  p = (byte*) Wire.read();
+  //  Wire.endTransmission();
+
   // read only the LED registers as lsb-msb pairs of bytes
-  Wire.beginTransmission(HRAddress);
-  Wire.write(SI114_REG_PS1_DATA0);
-  Wire.endTransmission();
-  byte* p = (byte*) &resp;
-  Wire.requestFrom(HRAddress, 6);
-  while (Wire.available() < 6);
-  p = (byte*) Wire.read();
-  Wire.endTransmission();
+  char PS1_0, PS1_1, PS2_0, PS2_1, PS3_0, PS3_1;
+  PS1_0 = HR_read_reg(SI114_REG_PS1_DATA0, 1);
+  PS1_1 = HR_read_reg(SI114_REG_PS1_DATA1, 1);
+  PS2_0 = HR_read_reg(SI114_REG_PS2_DATA0, 1);
+  PS2_1 = HR_read_reg(SI114_REG_PS2_DATA1, 1);
+  PS3_0 = HR_read_reg(SI114_REG_PS3_DATA0, 1);
+  PS3_1 = HR_read_reg(SI114_REG_PS3_DATA1, 1);
+
+  ps1 = (int) ((PS1_1 << 8) | PS1_0);
+  ps2 = (int) ((PS2_1 << 8) | PS2_0);
+  ps3 = (int) ((PS3_1 << 8) | PS3_0);
 }
 
 float smooth(float data, float filterVal, float smoothedVal) {
@@ -235,7 +250,7 @@ void readPulseSensor() {
   static long red_valley, red_Peak, red_smoothRedPeak, red_smoothRedValley,
          red_HFoutput, red_smoothPeak; // for PSO2 calc
   static  int IR_valley = 0, IR_peak = 0, IR_smoothPeak, IR_smoothValley,
-              binOut, lastBinOut, BPM;
+              binOut, lastBinOut;
   static unsigned long lastTotal, lastMillis, IRtotal, valleyTime =
     millis(), lastValleyTime = millis(), peakTime = millis(), lastPeakTime =
                                  millis(), lastBeat, beat;
@@ -244,7 +259,6 @@ void readPulseSensor() {
 
   unsigned long total = 0, start;
   int i = 0;
-  int IR_signalSize;
   red = 0;
   IR1 = 0;
   IR2 = 0;
@@ -257,6 +271,12 @@ void readPulseSensor() {
     IR1 += ps2;
     IR2 += ps3;
     i++;
+    /*
+    Serial.print("i: "); Serial.print(i);
+    Serial.print(" ps1: "); Serial.print(ps1);
+    Serial.print(" ps2: "); Serial.print(ps2);
+    Serial.print(" ps3: "); Serial.println(ps3);
+    */
   }
 
   red = red / i;  // get averages
@@ -264,6 +284,22 @@ void readPulseSensor() {
   IR2 = IR2 / i;
   total =  IR1 + IR2 + red;  // red excluded
   IRtotal = IR1 + IR2;
+
+  /*
+  Serial.print("red ");
+  Serial.print(red);
+  Serial.print("\t");
+  Serial.print("IR1 ");
+  Serial.print(IR1);
+  Serial.print("\t");
+  Serial.print("IR2 ");
+  Serial.print(IR2);
+  Serial.print("\t");
+  Serial.print("total ");
+  Serial.println((long)total);
+  Serial.print("\t");
+  */
+
 
   // except this one for Processing heartbeat monitor
   // comment out all the bottom print lines
@@ -281,6 +317,8 @@ void readPulseSensor() {
   }
 
   else if (total > 20000L) {   // main running function
+
+    //Serial.println("HR Main Running Function");
 
     // baseline is the moving average of the signal - the middle of the waveform
     // the idea here is to keep track of a high frequency signal, HF outputand a
@@ -308,6 +346,7 @@ void readPulseSensor() {
 
     // default reset - only if reset fails to occur for 1800 ms
     if (millis() - lastPeakTime > 1800) { // reset peak detector slower than lowest human HB
+      //Serial.println("Problem Here! ");
       IR_smoothPeak =  smooth((float)IR_peak, 0.6, (float)IR_smoothPeak);
       // smooth peaks
       IR_peak = 0;
@@ -341,10 +380,11 @@ void readPulseSensor() {
     hysterisis = constrain((IR_signalSize / 15), 35, 120) ;  // you might want to divide by smaller number
     // if you start getting "double bumps"
 
-    // Serial.print(" T  ");
-    // Serial.print(IR_signalSize);
+    //Serial.print(" T  ");
+    //Serial.print(IR_signalSize);
 
     if  (IR_HFoutput2 < shiftedOutput) {
+      //Serial.println("Found a Beat");
       // found a beat - pulses are valleys
       lastBinOut = binOut;
       binOut = 1;
@@ -364,7 +404,7 @@ void readPulseSensor() {
 
     }
     else {
-      Serial.println("\t0");
+      // Serial.println("\t0");
       lastBinOut = binOut;
       binOut = 0;
       IR_smoothPeak =  smooth((float)IR_peak, 0.99, (float)IR_smoothPeak);
@@ -378,27 +418,25 @@ void readPulseSensor() {
     }
 
     if (lastBinOut == 1 && binOut == 0) {
-      Serial.println(binOut);
+      //Serial.println(binOut);
     }
 
     if (lastBinOut == 0 && binOut == 1) {
       lastBeat = beat;
       beat = millis();
       BPM = 60000 / (beat - lastBeat);
-      Serial.print(binOut);
-      Serial.print("\t BPM ");
-      Serial.print(BPM);
-      Serial.print("\t IR ");
-      Serial.print(IR_signalSize);
-      Serial.print("\t PSO2 ");
-      Serial.println(((float)red_baseline / (float)(IR_baseline / 2)), 3);
-      RFduinoBLE.sendFloat(0x08);
-      delay(75);
-      RFduinoBLE.sendByte(BPM);
-      delay(75);
+      pso2 = ((float)red_baseline / (float)(IR_baseline / 2));
+      //      Serial.print(binOut);
+      //      Serial.print("\t BPM ");
+      //      Serial.print(BPM);
+      //      Serial.print("\t IR ");
+      //      Serial.print(IR_signalSize);
+      //      Serial.print("\t PSO2 ");
+      //      Serial.println(pso2, 3);
     }
   }
 }
+
 void initPulseSensor() {
 
   HR_write_reg(SI114_REG_HW_KEY, 0x17);
@@ -430,7 +468,7 @@ void initPulseSensor() {
   // increasing PARAM_PS_ADC_GAIN will increase the LED on time and ADC window
   // you will see increase in brightness of visible LED's, ADC output, & noise
   // datasheet warns not to go beyond 4 because chip or LEDs may be damaged
-  HR_write_param(SI114_PARAM_PS_ADC_GAIN, 0x03);
+  HR_write_param(SI114_PARAM_PS_ADC_GAIN, 0x01);
 
   HR_write_param(SI114_PARAM_PSLED12_SELECT, 0x21);  // select LEDs on for readings see datasheet
   HR_write_param(SI114_PARAM_PSLED3_SELECT, 0x04);   //  3 only
@@ -441,7 +479,7 @@ void initPulseSensor() {
   HR_write_param(SI114_PARAM_PS_ADC_COUNTER, B01110000);    // B01110000 is default
   HR_write_reg(SI114_REG_COMMAND, B00001111);     // starts an autonomous read loop
   Serial.println(HR_read_reg(SI114_REG_CHIP_STAT, 1), HEX);
-  Serial.print("end init");
+  Serial.println("end init");
 }
 
 //--------------------------------------------------------------------------------------
@@ -468,7 +506,27 @@ void loop() {
     //Heart Rate Monitor Read
     Wire.beginTransmission(HRAddress);  // transmit to SI1146 Heart Rate Monitor device #96 (0x60)
     Serial.println("Heart Rate Read Attempt");
-    readPulseSensor();
+    int i, counts = 0, BPM_Average = 0;
+    for (i = 0; i < 350; i++) {
+      readPulseSensor();
+      if ((BPM > 50) && (BPM < 180)) {
+        Serial.print("\t BPM ");
+        Serial.print(BPM);
+        Serial.print("\t IR ");
+        Serial.print(IR_signalSize);
+        Serial.print("\t PSO2 ");
+        Serial.println(pso2, 3);
+        BPM_Average += BPM;
+        counts++;
+      }
+    }
+    BPM_Average = BPM_Average / counts;
+    Serial.print("\t Average BPM ");
+    Serial.println(BPM_Average);
+    RFduinoBLE.sendFloat(0x08);
+    delay(75);
+    RFduinoBLE.sendByte(BPM_Average);
+    delay(75);
     //---> Insert into FRAM
 
     // Grab temperature measurements and print them.
@@ -550,6 +608,7 @@ void loop() {
   }
 
   Serial.println("Bottom of Main");
+
   //Sleep for 5 minutes or until interrupt
   RFduino_ULPDelay(SECONDS(10));
 
