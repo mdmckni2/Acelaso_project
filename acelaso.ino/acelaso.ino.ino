@@ -84,12 +84,8 @@ void setup()
   LED_OFF();
 }
 
-void expanderWrite(int i2caddr, byte data)
-{
-  Wire.beginTransmission(i2caddr);
-  Wire.write(data);
-  Wire.endTransmission();
-}
+//--------------------------------------------------------------------------------------------
+// Bluetooth
 
 void RFduinoBLE_onConnect() {
   Serial.println("RFduino BLE connection successful");
@@ -125,6 +121,16 @@ void RFduinoBLE_onRSSI(int rssi) {
   //  Serial.println(rssi); // print rssi value via serial
 }
 
+//--------------------------------------------------------------------------------------------
+// Expander and LEDs
+
+void expanderWrite(int i2caddr, byte data)
+{
+  Wire.beginTransmission(i2caddr);
+  Wire.write(data);
+  Wire.endTransmission();
+}
+
 void LED_OFF() {
   expanderWrite(ExpanderAddress, 0xFF);
 }
@@ -156,7 +162,7 @@ void LED_FLASH() {      //Flash Green LED for a few seconds
 }
 
 //--------------------------------------------------------------------------------------------
-// New Code Section for Heart Rate
+// Heart Rate
 
 int SI1146_Test(int i2caddr) {
   int id;
@@ -481,6 +487,9 @@ void initPulseSensor() {
   Serial.println(HR_read_reg(SI114_REG_CHIP_STAT, 1), HEX);
   Serial.println("end init");
 }
+
+//--------------------------------------------------------------------------------------------
+// Fram Code
 
 //--------------------------------------------------------------------------------------
 
