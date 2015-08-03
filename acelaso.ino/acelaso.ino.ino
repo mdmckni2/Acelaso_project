@@ -7,23 +7,15 @@
 #include <Wire.h>
 #include <pcf8574.h>
 
+#define TempAddress 64 // I2C address of TMP006
+#define HRAddress 96  //I2C Address of SI1146
+#define FRAMAddress 80 //I2C Address for FRAM
+#define interval 500 //500 ms between advertisement transmission
+#define ExpanderAddress B0111000
+// int samples = TMP006_CFG_8SAMPLE; // # of samples per reading, can be 1 / 2 / 4 / 8 / 16
+#define ledflash 5
+#define button_holdtime 2000
 
-int TempAddress = 64; // I2C address of TMP006
-int HRAddress = 96;  //I2C Address of SI1146
-int FRAMAddress = 80; //I2C Address for FRAM
-int interval = 500; //500 ms between advertisement transmission
-int ExpanderAddress = B0111000;
-int samples = TMP006_CFG_8SAMPLE; // # of samples per reading, can be 1 / 2 / 4 / 8 / 16
-int lastButtonState = LOW;
-long button_holdtime = 2000;
-int ledflash = 5;
-int BLE_State = 0;
-
-Adafruit_TMP006 tmp006;
-Adafruit_FRAM_I2C fram     = Adafruit_FRAM_I2C();
-uint16_t framAddr = 0;
-
-char state = 0;
 #define RESET 0
 #define POLL_SENSORS 1
 #define BUTTON_PRESS 2
@@ -32,7 +24,15 @@ char state = 0;
 #define ON 1
 #define OFF 0
 
-const int SAMPLES_TO_AVERAGE = 5; // samples for smoothing 1 to 10 seem useful 5 is default
+Adafruit_TMP006 tmp006;
+Adafruit_FRAM_I2C fram = Adafruit_FRAM_I2C();
+uint16_t framAddr = 0;
+
+char state = POLL_SENSORS;
+int lastButtonState = LOW;
+int BLE_State = 0;
+
+#define SAMPLES_TO_AVERAGE 5 // samples for smoothing 1 to 10 seem useful 5 is default
 // increase for smoother waveform (with less resolution - slower!)
 int binOut; // 1 or 0 depending on state of heartbeat
 int BPM;
@@ -43,6 +43,9 @@ unsigned long IR1;        // read value from infrared LED1
 unsigned long IR2;       // read value from infrared LED2
 unsigned long IR_total;     // IR LED reads added together
 unsigned int resp, als_vis, als_ir, ps1, ps2, ps3;
+
+//--------------------------------------------------------------------------------------------
+// program setup
 
 void setup()
 {
@@ -56,10 +59,10 @@ void setup()
   Serial.println("Waiting for connection...");
 
   //Check to see if temperature sensor is found
-  //  if (! tmp006.begin()) {
-  //    Serial.println("No temperature sensor found");
-  //    while (1);
-  //  }
+  if (! tmp006.begin()) {
+    Serial.println("No temperature sensor found");
+    while (1);
+  }
 
   //Setup pin 3 for button press
   pinMode(3, INPUT); // set pin 3 to input
@@ -71,12 +74,14 @@ void setup()
   delay(2000);
 
   //Check to ensure that FRAM device is found
-  //  if (fram.begin()) {  // you can stick the new i2c addr in here, e.g. begin(0x51);
-  //    Serial.println("Found I2C FRAM");
-  //  } else {
-  //    Serial.println("No I2C FRAM found ... check your connections\r\n");
-  //    while (1);
-  //  }
+  if (fram.begin(FRAMAddress)) {  // you can stick the new i2c addr in here, e.g. begin(0x50);
+    Serial.println("Found I2C FRAM");
+  } else {
+    Serial.println("No I2C FRAM found ... check your connections\r\n");
+    while (1);
+  }
+
+    RED_LED_ON();
 
   //Init Heart Rate Sensor
   initPulseSensor();
