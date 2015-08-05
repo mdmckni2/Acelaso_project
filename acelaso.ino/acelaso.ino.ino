@@ -24,11 +24,11 @@
 #define ON 1
 #define OFF 0
 
-Adafruit_TMP006 tmp006;
+Adafruit_TMP006 tmp006(TempAddress);
 Adafruit_FRAM_I2C fram = Adafruit_FRAM_I2C();
 uint16_t framAddr = 0;
 
-char state = POLL_SENSORS;
+char state = RESET;
 int lastButtonState = LOW;
 int BLE_State = 0;
 
@@ -61,7 +61,7 @@ void setup()
   //Check to see if temperature sensor is found
   if (! tmp006.begin()) {
     Serial.println("No temperature sensor found");
-    while (1);
+//    while (1);
   }
 
   //Setup pin 3 for button press
@@ -78,7 +78,7 @@ void setup()
     Serial.println("Found I2C FRAM");
   } else {
     Serial.println("No I2C FRAM found ... check your connections\r\n");
-    while (1);
+//    while (1);
   }
 
     RED_LED_ON();
@@ -495,6 +495,8 @@ void initPulseSensor() {
 
 //--------------------------------------------------------------------------------------------
 // Fram Code
+
+
 
 //--------------------------------------------------------------------------------------
 
