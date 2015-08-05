@@ -21,7 +21,10 @@ int FRAMAddress = 80; //I2C Address for FRAM
 #define BUTTON_PRESS 2
 #define BLUETOOTH 3
 #define TRANSMIT_DATA 4
-#define TESTING 9
+#define CONNECTED 5
+#define FRAM_TESTING 9
+
+#define FRAM_SIZE (32*1024) 
 
 #define ON 1
 #define OFF 0
@@ -30,7 +33,8 @@ Adafruit_TMP006 tmp006(TempAddress);
 Adafruit_FRAM_I2C fram = Adafruit_FRAM_I2C();
 uint16_t framAddr = 0;
 
-char state = TESTING;
+char state = POLL_SENSORS;
+char prev_state = RESET;
 int lastButtonState = LOW;
 int BLE_State = 0;
 
@@ -46,7 +50,6 @@ unsigned long IR2;       // read value from infrared LED2
 unsigned long IR_total;     // IR LED reads added together
 unsigned int resp, als_vis, als_ir, ps1, ps2, ps3;
 
-int temp_data_int[1] = {0};
 float temp_data_float[1] = {0};
 
 uint16_t fram_current_address = 0;
@@ -76,9 +79,10 @@ void setup()
   pinMode(3, INPUT); // set pin 3 to input
   RFduino_pinWake(3, LOW); // configures pin 3 to wake up device on a low signal
 
-  RFduinoBLE.advertisementData = "BLETest";
+  RFduinoBLE.advertisementData = "Data";
   RFduinoBLE.advertisementInterval = interval;
   RFduinoBLE.deviceName = "ACELASO";
+  RFduinoBLE.txPowerLevel = 0;
   delay(2000);
 
   //Check to ensure that FRAM device is found
@@ -89,8 +93,6 @@ void setup()
 //    while (1);
   }
 
-    RED_LED_ON();
-
   //Init Heart Rate Sensor
   initPulseSensor();
 
@@ -98,19 +100,20 @@ void setup()
 }
 
 //--------------------------------------------------------------------------------------------
-// Bluetooth
+// RFduino Bluetooth Setup
 
 void RFduinoBLE_onConnect() {
   Serial.println("RFduino BLE connection successful");
   BLUE_LED_ON();
-  state = POLL_SENSORS;
+  prev_state = CONNECTED;
+  state = TRANSMIT_DATA;
 }
 
 void RFduinoBLE_onDisconnect() {
   Serial.println("RFduino BLE disconnected");
-  RED_LED_ON();
-  //LED_OFF();
-
+//  RED_LED_ON();
+  LED_OFF();
+  state = TRANSMIT_DATA;
 }
 
 void RFduinoBLE_onAdvertisement(bool start) {
@@ -332,7 +335,7 @@ void readPulseSensor() {
 
   if ( foundNewFinger < 20) {
     IR_baseline = total - 200;   // take a guess at the baseline to prime smooth filter
-    Serial.println("found new finger");
+//    Serial.println("found new finger");
   }
 
   else if (total > 20000L) {   // main running function
@@ -461,12 +464,12 @@ void initPulseSensor() {
   HR_write_reg(SI114_REG_HW_KEY, 0x17);
   // HR_write_reg(pulse::COMMAND, pulse::RESET_Cmd);
 
-  Serial.print("PART: ");
-  Serial.print(HR_read_reg(SI114_REG_PART_ID, 1));
-  Serial.print(" REV: ");
-  Serial.print(HR_read_reg(SI114_REG_REV_ID, 1));
-  Serial.print(" SEQ: ");
-  Serial.println(HR_read_reg(SI114_REG_SEQ_ID, 1));
+//  Serial.print("PART: ");
+//  Serial.print(HR_read_reg(SI114_REG_PART_ID, 1));
+//  Serial.print(" REV: ");
+//  Serial.print(HR_read_reg(SI114_REG_REV_ID, 1));
+//  Serial.print(" SEQ: ");
+//  Serial.println(HR_read_reg(SI114_REG_SEQ_ID, 1));
 
   HR_write_reg(SI114_REG_IRQ_CFG, 0x03);       // turn on interrupts
   HR_write_reg(SI114_REG_IRQ_ENABLE, 0x10);    // turn on interrupt on PS3
@@ -477,10 +480,10 @@ void initPulseSensor() {
   HR_write_reg(SI114_REG_PS_LED21, 0x66 );      // LED current for LEDs 1 (red) & 2 (IR1)
   HR_write_reg(SI114_REG_PS_LED3, 0x06);        // LED current for LED 3 (IR2)
 
-  Serial.print( "PS_LED21 = ");
-  Serial.println(HR_read_reg(SI114_REG_PS_LED21, 1), BIN);
-  Serial.print("CHLIST = ");
-  Serial.println(HR_read_param(0x01), BIN);
+//  Serial.print( "PS_LED21 = ");
+//  Serial.println(HR_read_reg(SI114_REG_PS_LED21, 1), BIN);
+//  Serial.print("CHLIST = ");
+//  Serial.println(HR_read_param(0x01), BIN);
 
   HR_write_param(SI114_PARAM_CH_LIST, 0x77);         // all measurements on
 
@@ -497,8 +500,8 @@ void initPulseSensor() {
 
   HR_write_param(SI114_PARAM_PS_ADC_COUNTER, B01110000);    // B01110000 is default
   HR_write_reg(SI114_REG_COMMAND, B00001111);     // starts an autonomous read loop
-  Serial.println(HR_read_reg(SI114_REG_CHIP_STAT, 1), HEX);
-  Serial.println("end init");
+//  Serial.println(HR_read_reg(SI114_REG_CHIP_STAT, 1), HEX);
+//  Serial.println("end init");
 }
 
 //--------------------------------------------------------------------------------------------
@@ -506,12 +509,21 @@ void initPulseSensor() {
 /*
 Data to be stored
 
-variable      type       bytes    description
---------      -----      -----    -----------
-BPM_Average   int         2       Average Of User BPM during sampling
-objt          float       4       Temperature of Skin
-diet          float       4       TMP006 Die Temp
-gsr           float       4       GSR reading (figure out units, possibly mV)
+variable      type       bytes    header    description
+--------      -----      -----    ------    -----------
+BPM_Average   float       4        0x08     Average Of User BPM during sampling
+objt          float       4        0x05     Temperature of Skin
+diet          float       4        0x06     TMP006 Die Temp
+gsr           float       4        0x07     GSR reading (figure out units, possibly mV)
+
+Fram calculations:  
+32768 bytes of storage / 4 bytes per data = 8192 data pieces
+8192 data / 4 signals = 2048 data points per signal
+
+At 5 min sleep between readings
+24 hours * 60 minutes / 5 min = 288 cycles (for all 4 signals)
+288 cycles * 4 signals per cycle * 4 bytes per signal = 4608 bytes used
+
 */
 
 void FRAM_writeFloat(uint16_t framAddr, float value[])
@@ -542,8 +554,9 @@ void FRAM_writeInt(uint16_t framAddr, int value[])
 
 float FRAM_readFloat(uint16_t framAddr)
 {
-  float result[1] = {0};
-  unsigned char a[4] = { 0, 0, 0, 0 }; 
+  float f = 0.1;
+  unsigned char *pc;
+  pc = (unsigned char*)&f;
   
   Wire.beginTransmission(FRAMAddress);
   Wire.write(framAddr >> 8);
@@ -551,29 +564,23 @@ float FRAM_readFloat(uint16_t framAddr)
   Wire.endTransmission();
 
   Wire.requestFrom(FRAMAddress, 4);
-  a[0] = Wire.read();
-  a[1] = Wire.read();
-  a[2] = Wire.read();
-  a[3] = Wire.read();
+  pc[0] = Wire.read();
+  pc[1] = Wire.read();
+  pc[2] = Wire.read();
+  pc[3] = Wire.read();
   
-  result[0] = ((a[0]<<24) | (a[1]<<16) | (a[2]<<8) | (a[3]));
+  *(unsigned int*)&f = (pc[3] << 24) | (pc[2] << 16) | (pc[1] << 8) | (pc[0] << 0);
+  
+//  result[0] = ((a[0]<<24) | (a[1]<<16) | (a[2]<<8) | (a[3]));
 //  result[0] = ((a[3]<<24) | (a[2]<<16) | (a[1]<<8) | (a[0]));
   
-  return result[0];
+  return f;
 }
 
 //--------------------------------------------------------------------------------------
 
 void loop() {
-  Serial.println("Top of Main");
-
-  if (state == TESTING) {
-    Serial.print("Fram Address: "); Serial.println(fram_current_address);
-    Serial.print("Write Data: "); Serial.println(temp_data_float[0]);
-    FRAM_writeFloat(fram_current_address, temp_data_float);
-    fram_current_address = fram_current_address + 4;
-    temp_data_float[0] = temp_data_float[0] + 1.1;
-  }
+//  Serial.println("Top of Main");
 
   //Detect button Press
   if (RFduino_pinWoke(3)) {
@@ -583,126 +590,218 @@ void loop() {
     delay(2500);
     RFduino_resetPinWake(3); // reset state of pin that caused wakeup (Must do this)
   }
-
-  //Poll Sensors if time expired
-  if (state == POLL_SENSORS) {
-
-    //Do nothing if BLE is transmitting
-    while (RFduinoBLE.radioActive)
-      ;
-
-    //Heart Rate Monitor Read
-    Wire.beginTransmission(HRAddress);  // transmit to SI1146 Heart Rate Monitor device #96 (0x60)
-    Serial.println("Heart Rate Read Attempt");
-    int i, counts = 0, BPM_Average = 0;
-    for (i = 0; i < 350; i++) {
-      readPulseSensor();
-      if ((BPM > 50) && (BPM < 180)) {
-        Serial.print("\t BPM ");
-        Serial.print(BPM);
-        Serial.print("\t IR ");
-        Serial.print(IR_signalSize);
-        Serial.print("\t PSO2 ");
-        Serial.println(pso2, 3);
-        BPM_Average += BPM;
-        counts++;
-      }
-    }
-    BPM_Average = BPM_Average / counts;
-    Serial.print("\t Average BPM ");
-    Serial.println(BPM_Average);
-    RFduinoBLE.sendFloat(0x08);
-    delay(75);
-    RFduinoBLE.sendByte(BPM_Average);
-    delay(75);
-    //---> Insert into FRAM
-
-    // Grab temperature measurements and print them.
-    float objt = tmp006.readObjTempC();
-    objt = objt * (9 / 5) + 32;
-    Serial.print("Object Temperature: "); Serial.print(objt);
-    Serial.println("*F");
-    float diet = tmp006.readDieTempC();
-    diet = diet * (9 / 5) + 32;
-    Serial.print("Die Temperature: "); Serial.print(diet);
-    Serial.println("*F");
-    RFduinoBLE.sendByte(0x05);
-    delay(75);
-    RFduinoBLE.sendFloat(objt);
-    delay(75);
-    RFduinoBLE.sendByte(0x06);
-    delay(75);
-    RFduinoBLE.sendFloat(diet);
-    delay(75);
-
-    //---> Insert into FRAM
-
-    //Galvanic Skin Response Read
-    float gsr = analogRead(4); // returns 0 to 1023, does not need to be a float
-    Serial.print("Galvanic Skin Response: "); Serial.println(gsr);
-    RFduinoBLE.sendByte(0x07);
-    delay(75);
-    RFduinoBLE.sendFloat(gsr);
-    delay(75);
-    //---> Insert into FRAM
-
-    //    // Add Floats together to send in a single BLE.send
-    //   char output[4];
-    //    //first we add the time stamp (4 bytes)
-    //   long objt_long = objt;
-    //
-    //    for (int j = 0; j < 4; j++){
-    //      output[4-j]=(char)(objt_long >> (8*j) & 0xFF);
-    //    }
-    //    RFduinoBLE.send(objt);
-
-    //Next State
-    state = POLL_SENSORS;
+  
+  else if (state == RESET) {
+    Serial.println("State: RESET");
+//    if (prev_state == CONNECTED){
+//      BLUE_LED_ON();
+//      delay(1000);
+//      LED_OFF();
+//      delay(1000);
+//    }
+    
   }
-
-  else if (state == BUTTON_PRESS) {
+  
+  else if (state == BUTTON_PRESS) { 
+    Serial.println("State: BUTTON_PRESS");
     //float temp = RFduino_temperature(FAHRENHEIT); // returns temperature in Celsius and stores in float temp
     //Serial.print("RFduino Temperature: "); Serial.print(temp); Serial.println("*F");
-
-    Serial.print("Read Fram at Address: "); Serial.println(fram_bluetooth_address);
-    float temp = FRAM_readFloat(fram_bluetooth_address);
-    Serial.print("Value at address: "); Serial.println(temp);
-    fram_bluetooth_address += 1;
     
     RED_LED_ON();
     delay(1000);
     LED_OFF();
     delay(1000);
-    RED_LED_ON();
-    delay(1000);
-    LED_OFF();
-    delay(1000);
+    
+    prev_state = BUTTON_PRESS;
+    state = BLUETOOTH;
+  }
 
-    state = RESET;
+  //Poll Sensors if time expired
+  if (state == POLL_SENSORS) {
+    Serial.println("State: POLL_SENSORS");
+    //Do nothing if BLE is transmitting
+    while (RFduinoBLE.radioActive)
+      ;
+    //Heart Rate Monitor Read
+    Wire.beginTransmission(HRAddress);  // transmit to SI1146 Heart Rate Monitor device #96 (0x60)
+//    Serial.println("Heart Rate Read Attempt");
+    int i, counts = 0;
+    float BPM_Average = 0;
+    for (i = 0; i < 350; i++) {
+      readPulseSensor();
+      if ((BPM > 50) && (BPM < 180)) {
+//        Serial.print("\t BPM ");
+//        Serial.print(BPM);
+//        Serial.print("\t IR ");
+//        Serial.print(IR_signalSize);
+//        Serial.print("\t PSO2 ");
+//        Serial.println(pso2, 3);
+        BPM_Average += BPM;
+        counts++;
+      }
+    }
+    BPM_Average = BPM_Average / counts;
+//    Serial.print("\t Average BPM ");
+//    Serial.println(BPM_Average);
+//    RFduinoBLE.sendByte(0x08);
+//    delay(75);
+//    RFduinoBLE.sendFloat(BPM_Average);
+//    delay(75);
+    //---> Insert into FRAM
+    temp_data_float[0] = BPM_Average;
+    Serial.print("Fram Address: "); Serial.print(fram_current_address);
+    Serial.print(" BPM_Average written: "); Serial.println(temp_data_float[0]);
+    FRAM_writeFloat(fram_current_address, temp_data_float);
+    fram_current_address += 4;
+    // Grab temperature measurements and print them.
+    float objt = tmp006.readObjTempC();
+    objt = objt * (9 / 5) + 32;
+//    Serial.print("Object Temperature: "); Serial.print(objt);
+//    Serial.println("*F");
+    float diet = tmp006.readDieTempC();
+    diet = diet * (9 / 5) + 32;
+//    Serial.print("Die Temperature: "); Serial.print(diet);
+//    Serial.println("*F");
+//    RFduinoBLE.sendByte(0x05);
+//    delay(75);
+//    RFduinoBLE.sendFloat(objt);
+//    delay(75);
+//    RFduinoBLE.sendByte(0x06);
+//    delay(75);
+//    RFduinoBLE.sendFloat(diet);
+//    delay(75);
+    //---> Insert into FRAM
+    temp_data_float[0] = objt;
+    Serial.print("Fram Address: "); Serial.print(fram_current_address);
+    Serial.print(" objt written: "); Serial.println(temp_data_float[0]);
+    FRAM_writeFloat(fram_current_address, temp_data_float);
+    fram_current_address += 4;
+    temp_data_float[0] = diet;
+    Serial.print("Fram Address: "); Serial.print(fram_current_address);
+    Serial.print(" diet written: "); Serial.println(temp_data_float[0]);
+    FRAM_writeFloat(fram_current_address, temp_data_float);
+    fram_current_address += 4;
+    //Galvanic Skin Response Read
+    float gsr = analogRead(4); // returns 0 to 1023, does not need to be a float
+//    Serial.print("Galvanic Skin Response: "); Serial.println(gsr);
+//    RFduinoBLE.sendByte(0x07);
+//    delay(75);
+//    RFduinoBLE.sendFloat(gsr);
+//    delay(75);
+    //---> Insert into FRAM
+    temp_data_float[0] = gsr;
+    Serial.print("Fram Address: "); Serial.print(fram_current_address);
+    Serial.print(" gsr written: "); Serial.println(temp_data_float[0]);
+    FRAM_writeFloat(fram_current_address, temp_data_float);
+    fram_current_address += 4;
+    //Next State
+    prev_state = POLL_SENSORS;
+    state = POLL_SENSORS;
   }
 
   else if (state == BLUETOOTH) {
+    Serial.println("State: BLUETOOTH");
     if (BLE_State == OFF) {
       Serial.println("Bluetooth Begin");
       RFduinoBLE.begin();
       delay(2000);
       Serial.println("Bluetooth On");
       BLE_State = ON;
+      BLUE_LED_ON();
+      delay(1000);
+      LED_OFF();
+      delay(1000);
+      BLUE_LED_ON();
+      delay(1000);
+      LED_OFF();
+      prev_state = BLUETOOTH;
+      state = RESET; // Wait for a connection
     }
-
     else if (BLE_State == ON) {
       RFduinoBLE.end();
       Serial.println("Bluetooth ending");
       BLE_State = OFF;
+      RED_LED_ON();
+      delay(1000);
       LED_OFF();
+      delay(1000);
+      RED_LED_ON();
+      delay(1000);
+      LED_OFF();
+      delay(1000);
+      prev_state = BLUETOOTH;
+      state = POLL_SENSORS; //
     }
-
-    state = RESET;
+  }
+  
+  else if (state == TRANSMIT_DATA) {
+    Serial.println("State: TRANSMIT_DATA");
+    /*
+    Fram read order: BPM_Average, objt, diet, gsr
+    */
+    BLUE_LED_ON();
+    
+    while (RFduinoBLE.radioActive)
+      ;
+    
+    while (fram_bluetooth_address <= fram_current_address){
+      float temp_float;
+      Serial.print("Fram Address: "); Serial.print(fram_bluetooth_address);
+      temp_float = FRAM_readFloat(fram_bluetooth_address);
+      Serial.print(" BPM_Average: "); Serial.println(temp_float);
+      fram_bluetooth_address += 4;
+      RFduinoBLE.sendByte(0x08); 
+      delay(75);
+      RFduinoBLE.sendFloat(temp_float); // BPM_Average
+      delay(75);
+      Serial.print("Fram Address: "); Serial.print(fram_bluetooth_address);
+      temp_float = FRAM_readFloat(fram_bluetooth_address);
+      Serial.print(" objt: "); Serial.println(temp_float);
+      fram_bluetooth_address += 4;
+      RFduinoBLE.sendByte(0x05); 
+      delay(75);
+      RFduinoBLE.sendFloat(temp_float); // objt
+      delay(75);
+      Serial.print("Fram Address: "); Serial.print(fram_bluetooth_address);
+      temp_float = FRAM_readFloat(fram_bluetooth_address);
+      Serial.print(" diet: "); Serial.println(temp_float);
+      fram_bluetooth_address += 4;
+      RFduinoBLE.sendByte(0x06); 
+      delay(75);
+      RFduinoBLE.sendFloat(temp_float); // diet
+      delay(75);
+      Serial.print("Fram Address: "); Serial.print(fram_bluetooth_address);
+      temp_float = FRAM_readFloat(fram_bluetooth_address);
+      Serial.print(" gsr: "); Serial.println(temp_float);
+      fram_bluetooth_address += 4;
+      RFduinoBLE.sendByte(0x07); 
+      delay(75);
+      RFduinoBLE.sendFloat(temp_float); // gsr
+      delay(75);
+    }
+    
+    GREEN_LED_ON();
+    prev_state = TRANSMIT_DATA;
+    state = POLL_SENSORS; // To turn off BLE advertising and begin polling sensors
+  }
+  
+  else if (state == FRAM_TESTING) {
+    Serial.println("State: FRAM_TESTING");
+    Serial.print("Fram Address: "); Serial.println(fram_current_address);
+    Serial.print("Write Data: "); Serial.println(temp_data_float[0]);
+    FRAM_writeFloat(fram_current_address, temp_data_float);
+    fram_current_address += 4;
+    temp_data_float[0] += 1.1;
+    
+    Serial.print("Read Fram at Address: "); Serial.println(fram_bluetooth_address);
+    float temp = FRAM_readFloat(fram_bluetooth_address);
+    Serial.print("Value at address: "); Serial.println(temp);
+    fram_bluetooth_address += 4;
   }
 
-  Serial.println("Bottom of Main");
+//  Serial.println("Bottom of Main");
 
   //Sleep for 5 minutes or until interrupt
-  RFduino_ULPDelay(SECONDS(10));
+  RFduino_ULPDelay(SECONDS(5)); //CHANGE THIS
 
 }
