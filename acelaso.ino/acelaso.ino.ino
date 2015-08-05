@@ -7,9 +7,9 @@
 #include <Wire.h>
 #include <pcf8574.h>
 
-#define TempAddress 64 // I2C address of TMP006
-#define HRAddress 96  //I2C Address of SI1146
-#define FRAMAddress 80 //I2C Address for FRAM
+int TempAddress = 64; // I2C address of TMP006
+int HRAddress = 96;  //I2C Address of SI1146
+int FRAMAddress = 80; //I2C Address for FRAM
 #define interval 500 //500 ms between advertisement transmission
 #define ExpanderAddress B0111000
 // int samples = TMP006_CFG_8SAMPLE; // # of samples per reading, can be 1 / 2 / 4 / 8 / 16
@@ -20,6 +20,8 @@
 #define POLL_SENSORS 1
 #define BUTTON_PRESS 2
 #define BLUETOOTH 3
+#define TRANSMIT_DATA 4
+#define TESTING 9
 
 #define ON 1
 #define OFF 0
@@ -28,7 +30,7 @@ Adafruit_TMP006 tmp006(TempAddress);
 Adafruit_FRAM_I2C fram = Adafruit_FRAM_I2C();
 uint16_t framAddr = 0;
 
-char state = RESET;
+char state = TESTING;
 int lastButtonState = LOW;
 int BLE_State = 0;
 
@@ -43,6 +45,12 @@ unsigned long IR1;        // read value from infrared LED1
 unsigned long IR2;       // read value from infrared LED2
 unsigned long IR_total;     // IR LED reads added together
 unsigned int resp, als_vis, als_ir, ps1, ps2, ps3;
+
+int temp_data_int[1] = {0};
+float temp_data_float[1] = {0};
+
+uint16_t fram_current_address = 0;
+uint16_t fram_bluetooth_address = 0;
 
 //--------------------------------------------------------------------------------------------
 // program setup
@@ -495,19 +503,83 @@ void initPulseSensor() {
 
 //--------------------------------------------------------------------------------------------
 // Fram Code
+/*
+Data to be stored
 
+variable      type       bytes    description
+--------      -----      -----    -----------
+BPM_Average   int         2       Average Of User BPM during sampling
+objt          float       4       Temperature of Skin
+diet          float       4       TMP006 Die Temp
+gsr           float       4       GSR reading (figure out units, possibly mV)
+*/
 
+void FRAM_writeFloat(uint16_t framAddr, float value[])
+{
+  unsigned char *pointer;
+  pointer = (unsigned char *) value;  
+  Wire.beginTransmission(FRAMAddress);
+  Wire.write(framAddr >> 8);
+  Wire.write(framAddr & 0xFF);
+  Wire.write(*(pointer)++);
+  Wire.write(*(pointer)++);
+  Wire.write(*(pointer)++);
+  Wire.write(*(pointer));
+  Wire.endTransmission();
+}
+
+void FRAM_writeInt(uint16_t framAddr, int value[])
+{
+  unsigned char *pointer;
+  pointer = (unsigned char *) value;  
+  Wire.beginTransmission(FRAMAddress);
+  Wire.write(framAddr >> 8);
+  Wire.write(framAddr & 0xFF);
+  Wire.write(*(pointer)++);
+  Wire.write(*(pointer));
+  Wire.endTransmission();
+}
+
+float FRAM_readFloat(uint16_t framAddr)
+{
+  float result[1] = {0};
+  unsigned char a[4] = { 0, 0, 0, 0 }; 
+  
+  Wire.beginTransmission(FRAMAddress);
+  Wire.write(framAddr >> 8);
+  Wire.write(framAddr & 0xFF);
+  Wire.endTransmission();
+
+  Wire.requestFrom(FRAMAddress, 4);
+  a[0] = Wire.read();
+  a[1] = Wire.read();
+  a[2] = Wire.read();
+  a[3] = Wire.read();
+  
+  result[0] = ((a[0]<<24) | (a[1]<<16) | (a[2]<<8) | (a[3]));
+//  result[0] = ((a[3]<<24) | (a[2]<<16) | (a[1]<<8) | (a[0]));
+  
+  return result[0];
+}
 
 //--------------------------------------------------------------------------------------
 
 void loop() {
   Serial.println("Top of Main");
 
+  if (state == TESTING) {
+    Serial.print("Fram Address: "); Serial.println(fram_current_address);
+    Serial.print("Write Data: "); Serial.println(temp_data_float[0]);
+    FRAM_writeFloat(fram_current_address, temp_data_float);
+    fram_current_address = fram_current_address + 4;
+    temp_data_float[0] = temp_data_float[0] + 1.1;
+  }
+
   //Detect button Press
   if (RFduino_pinWoke(3)) {
     //RFduino_resetPinWake(3); // reset state of pin that caused wakeup (Must do this)
     Serial.println("Button Press!");
-    state = BLUETOOTH;
+    state = BUTTON_PRESS;
     delay(2500);
     RFduino_resetPinWake(3); // reset state of pin that caused wakeup (Must do this)
   }
@@ -566,7 +638,7 @@ void loop() {
     //---> Insert into FRAM
 
     //Galvanic Skin Response Read
-    float gsr = analogRead(4);
+    float gsr = analogRead(4); // returns 0 to 1023, does not need to be a float
     Serial.print("Galvanic Skin Response: "); Serial.println(gsr);
     RFduinoBLE.sendByte(0x07);
     delay(75);
@@ -584,7 +656,7 @@ void loop() {
     //    }
     //    RFduinoBLE.send(objt);
 
-    //Reset State
+    //Next State
     state = POLL_SENSORS;
   }
 
@@ -592,6 +664,11 @@ void loop() {
     //float temp = RFduino_temperature(FAHRENHEIT); // returns temperature in Celsius and stores in float temp
     //Serial.print("RFduino Temperature: "); Serial.print(temp); Serial.println("*F");
 
+    Serial.print("Read Fram at Address: "); Serial.println(fram_bluetooth_address);
+    float temp = FRAM_readFloat(fram_bluetooth_address);
+    Serial.print("Value at address: "); Serial.println(temp);
+    fram_bluetooth_address += 1;
+    
     RED_LED_ON();
     delay(1000);
     LED_OFF();
