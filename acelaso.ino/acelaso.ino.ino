@@ -33,7 +33,7 @@ Adafruit_TMP006 tmp006(TempAddress);
 Adafruit_FRAM_I2C fram = Adafruit_FRAM_I2C();
 uint16_t framAddr = 0;
 
-char state = POLL_SENSORS;
+char state = RESET;
 char prev_state = RESET;
 int lastButtonState = LOW;
 int BLE_State = 0;
@@ -74,6 +74,9 @@ void setup()
     Serial.println("No temperature sensor found");
 //    while (1);
   }
+  else{
+        Serial.println("Found temperature sensor");
+  }
 
   //Setup pin 3 for button press
   pinMode(3, INPUT); // set pin 3 to input
@@ -82,7 +85,7 @@ void setup()
   RFduinoBLE.advertisementData = "Data";
   RFduinoBLE.advertisementInterval = interval;
   RFduinoBLE.deviceName = "ACELASO";
-  RFduinoBLE.txPowerLevel = 0;
+//  RFduinoBLE.txPowerLevel = 0;
   delay(2000);
 
   //Check to ensure that FRAM device is found
@@ -97,6 +100,16 @@ void setup()
   initPulseSensor();
 
   LED_OFF();
+  
+//  while (1) {
+//    float objt = tmp006.readObjTempC();
+//    objt = objt * (9 / 5) + 32;
+//    Serial.print("Object Temperature: "); Serial.print(objt); Serial.println("*F");
+//    float diet = tmp006.readDieTempC();
+//    diet = diet * (9 / 5) + 32;
+//    Serial.print("Die Temperature: "); Serial.print(diet); Serial.println("*F");
+//  }
+  
 }
 
 //--------------------------------------------------------------------------------------------
