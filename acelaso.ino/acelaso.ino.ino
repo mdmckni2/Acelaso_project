@@ -505,7 +505,7 @@ void initPulseSensor() {
   // increasing PARAM_PS_ADC_GAIN will increase the LED on time and ADC window
   // you will see increase in brightness of visible LED's, ADC output, & noise
   // datasheet warns not to go beyond 4 because chip or LEDs may be damaged
-  HR_write_param(SI114_PARAM_PS_ADC_GAIN, 0x01);
+  HR_write_param(SI114_PARAM_PS_ADC_GAIN, 0x02);
 
   HR_write_param(SI114_PARAM_PSLED12_SELECT, 0x21);  // select LEDs on for readings see datasheet
   HR_write_param(SI114_PARAM_PSLED3_SELECT, 0x04);   //  3 only
