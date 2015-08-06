@@ -35,6 +35,7 @@ uint16_t framAddr = 0;
 
 char state = POLL_SENSORS;
 char prev_state = RESET;
+bool connectedBLE = false;
 int BLE_State = 0;
 
 #define SAMPLES_TO_AVERAGE 5 // samples for smoothing 1 to 10 seem useful 5 is default
@@ -117,6 +118,7 @@ void setup()
 void RFduinoBLE_onConnect() {
   Serial.println("RFduino BLE connection successful");
   BLUE_LED_ON();
+  connectedBLE = true;
   prev_state = CONNECTED;
   state = TRANSMIT_DATA;
 }
@@ -124,6 +126,7 @@ void RFduinoBLE_onConnect() {
 void RFduinoBLE_onDisconnect() {
   Serial.println("RFduino BLE disconnected");
 //  RED_LED_ON();
+  connectedBLE = false;
   LED_OFF();
   state = TRANSMIT_DATA;
 }
@@ -474,7 +477,7 @@ void readPulseSensor() {
 void initPulseSensor() {
 
   HR_write_reg(SI114_REG_HW_KEY, 0x17);
-  // HR_write_reg(pulse::COMMAND, pulse::RESET_Cmd);
+//  HR_write_reg(SI114_REG_COMMAND, B00000001);
 
 //  Serial.print("PART: ");
 //  Serial.print(HR_read_reg(SI114_REG_PART_ID, 1));
@@ -513,7 +516,7 @@ void initPulseSensor() {
   HR_write_param(SI114_PARAM_PS_ADC_COUNTER, B01110000);    // B01110000 is default
   HR_write_reg(SI114_REG_COMMAND, B00001111);     // starts an autonomous read loop
 //  Serial.println(HR_read_reg(SI114_REG_CHIP_STAT, 1), HEX);
-//  Serial.println("end init");
+  Serial.println("HR Sensor Initialized");
 }
 
 //--------------------------------------------------------------------------------------------
@@ -621,7 +624,7 @@ void loop() {
     //float temp = RFduino_temperature(FAHRENHEIT); // returns temperature in Celsius and stores in float temp
     //Serial.print("RFduino Temperature: "); Serial.print(temp); Serial.println("*F");
     
-    RED_LED_ON();
+    LED_ON();
     delay(1000);
     LED_OFF();
     delay(1000);
@@ -762,7 +765,8 @@ void loop() {
     while (RFduinoBLE.radioActive)
       ;
     
-    while (fram_bluetooth_address <= fram_current_address){
+    // While all the data nas not yet been sent and BLE is still connected
+    while ((fram_bluetooth_address <= fram_current_address) && (connectedBLE == true)){
       float temp_float;
       Serial.print("Fram Address: "); Serial.print(fram_bluetooth_address);
       temp_float = FRAM_readFloat(fram_bluetooth_address);
@@ -800,7 +804,7 @@ void loop() {
     
     GREEN_LED_ON();
     prev_state = TRANSMIT_DATA;
-    state = POLL_SENSORS; // To turn off BLE advertising and begin polling sensors
+    state = RESET; // To turn off BLE advertising and begin polling sensors
   }
   
   else if (state == FRAM_TESTING) {
@@ -820,6 +824,6 @@ void loop() {
 //  Serial.println("Bottom of Main");
 
   //Sleep for 5 minutes or until interrupt
-  RFduino_ULPDelay(SECONDS(10)); //CHANGE THIS
+//  RFduino_ULPDelay(SECONDS(1)); //CHANGE THIS
 
 }
