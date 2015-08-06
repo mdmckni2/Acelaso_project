@@ -14,14 +14,14 @@ int FRAMAddress = 80; //I2C Address for FRAM
 #define ExpanderAddress B0111000
 // int samples = TMP006_CFG_8SAMPLE; // # of samples per reading, can be 1 / 2 / 4 / 8 / 16
 #define ledflash 5
-#define button_holdtime 2000
 
 #define RESET 0
 #define POLL_SENSORS 1
 #define BUTTON_PRESS 2
-#define BLUETOOTH 3
+#define BLUETOOTH_ENABLE 3
 #define TRANSMIT_DATA 4
 #define CONNECTED 5
+#define WAIT_TO_CONNECT 6
 #define FRAM_TESTING 9
 
 #define FRAM_SIZE (32*1024) 
@@ -33,9 +33,8 @@ Adafruit_TMP006 tmp006(TempAddress);
 Adafruit_FRAM_I2C fram = Adafruit_FRAM_I2C();
 uint16_t framAddr = 0;
 
-char state = RESET;
+char state = POLL_SENSORS;
 char prev_state = RESET;
-int lastButtonState = LOW;
 int BLE_State = 0;
 
 #define SAMPLES_TO_AVERAGE 5 // samples for smoothing 1 to 10 seem useful 5 is default
@@ -79,7 +78,7 @@ void setup()
   }
 
   //Setup pin 3 for button press
-  pinMode(3, INPUT); // set pin 3 to input
+  pinMode(3, INPUT_PULLUP); // set pin 3 to input
   RFduino_pinWake(3, LOW); // configures pin 3 to wake up device on a low signal
 
   RFduinoBLE.advertisementData = "Data";
@@ -595,6 +594,8 @@ float FRAM_readFloat(uint16_t framAddr)
 void loop() {
 //  Serial.println("Top of Main");
 
+//    RFduino_resetPinWake(3); // reset state of pin that caused wakeup (Must do this)
+
   //Detect button Press
   if (RFduino_pinWoke(3)) {
     //RFduino_resetPinWake(3); // reset state of pin that caused wakeup (Must do this)
@@ -604,7 +605,7 @@ void loop() {
     RFduino_resetPinWake(3); // reset state of pin that caused wakeup (Must do this)
   }
   
-  else if (state == RESET) {
+  if (state == RESET) {
     Serial.println("State: RESET");
 //    if (prev_state == CONNECTED){
 //      BLUE_LED_ON();
@@ -615,7 +616,7 @@ void loop() {
     
   }
   
-  else if (state == BUTTON_PRESS) { 
+  if (state == BUTTON_PRESS) { 
     Serial.println("State: BUTTON_PRESS");
     //float temp = RFduino_temperature(FAHRENHEIT); // returns temperature in Celsius and stores in float temp
     //Serial.print("RFduino Temperature: "); Serial.print(temp); Serial.println("*F");
@@ -626,7 +627,7 @@ void loop() {
     delay(1000);
     
     prev_state = BUTTON_PRESS;
-    state = BLUETOOTH;
+    state = BLUETOOTH_ENABLE;
   }
 
   //Poll Sensors if time expired
@@ -712,8 +713,8 @@ void loop() {
     state = POLL_SENSORS;
   }
 
-  else if (state == BLUETOOTH) {
-    Serial.println("State: BLUETOOTH");
+  if (state == BLUETOOTH_ENABLE) {
+    Serial.println("State: BLUETOOTH_ENABLE");
     if (BLE_State == OFF) {
       Serial.println("Bluetooth Begin");
       RFduinoBLE.begin();
@@ -727,8 +728,7 @@ void loop() {
       BLUE_LED_ON();
       delay(1000);
       LED_OFF();
-      prev_state = BLUETOOTH;
-      state = RESET; // Wait for a connection
+      state = WAIT_TO_CONNECT; // Wait for a connection
     }
     else if (BLE_State == ON) {
       RFduinoBLE.end();
@@ -742,12 +742,17 @@ void loop() {
       delay(1000);
       LED_OFF();
       delay(1000);
-      prev_state = BLUETOOTH;
       state = POLL_SENSORS; //
-    }
+    } 
+    prev_state = BLUETOOTH_ENABLE;
   }
   
-  else if (state == TRANSMIT_DATA) {
+  if (state == WAIT_TO_CONNECT) {
+    Serial.println("State: WAIT_TO_CONNECT");
+
+  }
+  
+  if (state == TRANSMIT_DATA) {
     Serial.println("State: TRANSMIT_DATA");
     /*
     Fram read order: BPM_Average, objt, diet, gsr
@@ -815,6 +820,6 @@ void loop() {
 //  Serial.println("Bottom of Main");
 
   //Sleep for 5 minutes or until interrupt
-  RFduino_ULPDelay(SECONDS(5)); //CHANGE THIS
+  RFduino_ULPDelay(SECONDS(10)); //CHANGE THIS
 
 }
