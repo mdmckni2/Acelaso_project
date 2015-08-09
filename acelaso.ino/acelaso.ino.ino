@@ -463,13 +463,13 @@ void readPulseSensor() {
       beat = millis();
       BPM = 60000 / (beat - lastBeat);
       pso2 = ((float)red_baseline / (float)(IR_baseline / 2));
-      //      Serial.print(binOut);
-      //      Serial.print("\t BPM ");
-      //      Serial.print(BPM);
-      //      Serial.print("\t IR ");
-      //      Serial.print(IR_signalSize);
-      //      Serial.print("\t PSO2 ");
-      //      Serial.println(pso2, 3);
+      Serial.print(binOut);
+      Serial.print("\t BPM ");
+      Serial.print(BPM);
+      Serial.print("\t IR ");
+      Serial.print(IR_signalSize);
+      Serial.print("\t PSO2 ");
+      Serial.println(pso2, 3);
     }
   }
 }
@@ -479,12 +479,12 @@ void initPulseSensor() {
   HR_write_reg(SI114_REG_HW_KEY, 0x17);
 //  HR_write_reg(SI114_REG_COMMAND, B00000001);
 
-//  Serial.print("PART: ");
-//  Serial.print(HR_read_reg(SI114_REG_PART_ID, 1));
-//  Serial.print(" REV: ");
-//  Serial.print(HR_read_reg(SI114_REG_REV_ID, 1));
-//  Serial.print(" SEQ: ");
-//  Serial.println(HR_read_reg(SI114_REG_SEQ_ID, 1));
+  Serial.print("PART: ");
+  Serial.print(HR_read_reg(SI114_REG_PART_ID, 1));
+  Serial.print(" REV: ");
+  Serial.print(HR_read_reg(SI114_REG_REV_ID, 1));
+  Serial.print(" SEQ: ");
+  Serial.println(HR_read_reg(SI114_REG_SEQ_ID, 1));
 
   HR_write_reg(SI114_REG_IRQ_CFG, 0x03);       // turn on interrupts
   HR_write_reg(SI114_REG_IRQ_ENABLE, 0x10);    // turn on interrupt on PS3
@@ -495,17 +495,17 @@ void initPulseSensor() {
   HR_write_reg(SI114_REG_PS_LED21, 0x66 );      // LED current for LEDs 1 (red) & 2 (IR1)
   HR_write_reg(SI114_REG_PS_LED3, 0x06);        // LED current for LED 3 (IR2)
 
-//  Serial.print( "PS_LED21 = ");
-//  Serial.println(HR_read_reg(SI114_REG_PS_LED21, 1), BIN);
-//  Serial.print("CHLIST = ");
-//  Serial.println(HR_read_param(0x01), BIN);
+  Serial.print( "PS_LED21 = ");
+  Serial.println(HR_read_reg(SI114_REG_PS_LED21, 1), BIN);
+  Serial.print("CHLIST = ");
+  Serial.println(HR_read_param(0x01), BIN);
 
   HR_write_param(SI114_PARAM_CH_LIST, 0x77);         // all measurements on
 
   // increasing PARAM_PS_ADC_GAIN will increase the LED on time and ADC window
   // you will see increase in brightness of visible LED's, ADC output, & noise
   // datasheet warns not to go beyond 4 because chip or LEDs may be damaged
-  HR_write_param(SI114_PARAM_PS_ADC_GAIN, 0x02);
+  HR_write_param(SI114_PARAM_PS_ADC_GAIN, 0x04); // originally set at 1
 
   HR_write_param(SI114_PARAM_PSLED12_SELECT, 0x21);  // select LEDs on for readings see datasheet
   HR_write_param(SI114_PARAM_PSLED3_SELECT, 0x04);   //  3 only
@@ -538,6 +538,10 @@ Fram calculations:
 At 5 min sleep between readings
 24 hours * 60 minutes / 5 min = 288 cycles (for all 4 signals)
 288 cycles * 4 signals per cycle * 4 bytes per signal = 4608 bytes used
+
+At 2 min sleep between readings
+24 hours * 60 minutes / 2 min = 720 cycles (for all 4 signals)
+720 cycles * 4 signals per cycle * 4 bytes per signal = 11520 bytes used
 
 */
 
@@ -823,7 +827,7 @@ void loop() {
 
 //  Serial.println("Bottom of Main");
 
-  //Sleep for 5 minutes or until interrupt
-//  RFduino_ULPDelay(SECONDS(1)); //CHANGE THIS
+  //Sleep for 2 minutes or until interrupt
+  RFduino_ULPDelay(MINUTES(2)); //CHANGE THIS
 
 }
