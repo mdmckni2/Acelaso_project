@@ -15,6 +15,7 @@ int FRAMAddress = 80; //I2C Address for FRAM
 // int samples = TMP006_CFG_8SAMPLE; // # of samples per reading, can be 1 / 2 / 4 / 8 / 16
 #define ledflash 5
 
+// STATES FOR FSM
 #define RESET 0
 #define POLL_SENSORS 1
 #define BUTTON_PRESS 2
@@ -98,18 +99,8 @@ void setup()
 
   //Init Heart Rate Sensor
   initPulseSensor();
-
-  LED_OFF();
   
-//  while (1) {
-//    float objt = tmp006.readObjTempC();
-//    objt = objt * (9 / 5) + 32;
-//    Serial.print("Object Temperature: "); Serial.print(objt); Serial.println("*F");
-//    float diet = tmp006.readDieTempC();
-//    diet = diet * (9 / 5) + 32;
-//    Serial.print("Die Temperature: "); Serial.print(diet); Serial.println("*F");
-//  }
-  
+  LED_OFF();  
 }
 
 //--------------------------------------------------------------------------------------------
@@ -463,15 +454,25 @@ void readPulseSensor() {
       beat = millis();
       BPM = 60000 / (beat - lastBeat);
       pso2 = ((float)red_baseline / (float)(IR_baseline / 2));
-      Serial.print(binOut);
-      Serial.print("\t BPM ");
-      Serial.print(BPM);
-      Serial.print("\t IR ");
-      Serial.print(IR_signalSize);
-      Serial.print("\t PSO2 ");
-      Serial.println(pso2, 3);
+//      Serial.print(binOut);
+//      Serial.print("\t BPM ");
+//      Serial.print(BPM);
+//      Serial.print("\t IR ");
+//      Serial.print(IR_signalSize);
+//      Serial.print("\t PSO2 ");
+//      Serial.println(pso2, 3);
     }
   }
+}
+
+void HR_EnableLEDs() {
+  HR_write_reg(SI114_REG_PS_LED21, 0x66 );      // LED current for LEDs 1 (red) & 2 (IR1)
+  HR_write_reg(SI114_REG_PS_LED3, 0x06);        // LED current for LED 3 (IR2)
+}
+
+void HR_DisableLEDs() {
+  HR_write_reg(SI114_REG_PS_LED21, 0x00 );      // LED current for LEDs 1 (red) & 2 (IR1)
+  HR_write_reg(SI114_REG_PS_LED3, 0x00);        // LED current for LED 3 (IR2)
 }
 
 void initPulseSensor() {
@@ -479,12 +480,12 @@ void initPulseSensor() {
   HR_write_reg(SI114_REG_HW_KEY, 0x17);
 //  HR_write_reg(SI114_REG_COMMAND, B00000001);
 
-  Serial.print("PART: ");
-  Serial.print(HR_read_reg(SI114_REG_PART_ID, 1));
-  Serial.print(" REV: ");
-  Serial.print(HR_read_reg(SI114_REG_REV_ID, 1));
-  Serial.print(" SEQ: ");
-  Serial.println(HR_read_reg(SI114_REG_SEQ_ID, 1));
+//  Serial.print("PART: ");
+//  Serial.print(HR_read_reg(SI114_REG_PART_ID, 1));
+//  Serial.print(" REV: ");
+//  Serial.print(HR_read_reg(SI114_REG_REV_ID, 1));
+//  Serial.print(" SEQ: ");
+//  Serial.println(HR_read_reg(SI114_REG_SEQ_ID, 1));
 
   HR_write_reg(SI114_REG_IRQ_CFG, 0x03);       // turn on interrupts
   HR_write_reg(SI114_REG_IRQ_ENABLE, 0x10);    // turn on interrupt on PS3
@@ -495,10 +496,10 @@ void initPulseSensor() {
   HR_write_reg(SI114_REG_PS_LED21, 0x66 );      // LED current for LEDs 1 (red) & 2 (IR1)
   HR_write_reg(SI114_REG_PS_LED3, 0x06);        // LED current for LED 3 (IR2)
 
-  Serial.print( "PS_LED21 = ");
-  Serial.println(HR_read_reg(SI114_REG_PS_LED21, 1), BIN);
-  Serial.print("CHLIST = ");
-  Serial.println(HR_read_param(0x01), BIN);
+//  Serial.print( "PS_LED21 = ");
+//  Serial.println(HR_read_reg(SI114_REG_PS_LED21, 1), BIN);
+//  Serial.print("CHLIST = ");
+//  Serial.println(HR_read_param(0x01), BIN);
 
   HR_write_param(SI114_PARAM_CH_LIST, 0x77);         // all measurements on
 
@@ -527,8 +528,9 @@ Data to be stored
 variable      type       bytes    header    description
 --------      -----      -----    ------    -----------
 BPM_Average   float       4        0x08     Average Of User BPM during sampling
+pso2          float       4        0x06     User SP02 
 objt          float       4        0x05     Temperature of Skin
-diet          float       4        0x06     TMP006 Die Temp
+-X- diet          float       4        0x06     TMP006 Die Temp
 gsr           float       4        0x07     GSR reading (figure out units, possibly mV)
 
 Fram calculations:  
@@ -624,15 +626,11 @@ void loop() {
   }
   
   if (state == BUTTON_PRESS) { 
-    Serial.println("State: BUTTON_PRESS");
-    //float temp = RFduino_temperature(FAHRENHEIT); // returns temperature in Celsius and stores in float temp
-    //Serial.print("RFduino Temperature: "); Serial.print(temp); Serial.println("*F");
-    
+    Serial.println("State: BUTTON_PRESS");    
     LED_ON();
     delay(1000);
     LED_OFF();
     delay(1000);
-    
     prev_state = BUTTON_PRESS;
     state = BLUETOOTH_ENABLE;
   }
@@ -643,11 +641,14 @@ void loop() {
     //Do nothing if BLE is transmitting
     while (RFduinoBLE.radioActive)
       ;
+      
     //Heart Rate Monitor Read
-    Wire.beginTransmission(HRAddress);  // transmit to SI1146 Heart Rate Monitor device #96 (0x60)
+    Wire.beginTransmission(HRAddress); 
 //    Serial.println("Heart Rate Read Attempt");
     int i, counts = 0;
     float BPM_Average = 0;
+    float pso2_Average = 0;
+    HR_EnableLEDs();
     for (i = 0; i < 350; i++) {
       readPulseSensor();
       if ((BPM > 50) && (BPM < 180)) {
@@ -658,63 +659,67 @@ void loop() {
 //        Serial.print("\t PSO2 ");
 //        Serial.println(pso2, 3);
         BPM_Average += BPM;
+        pso2_Average += pso2;
         counts++;
       }
     }
-    BPM_Average = BPM_Average / counts;
+    HR_DisableLEDs();
+    if (counts == 0) {
+     counts = 1; 
+    }
+    BPM_Average = BPM_Average / counts;    // Dividing by 0 below happens when BPM outside of 50-180 BPM. This results in a nan - not a number.
 //    Serial.print("\t Average BPM ");
 //    Serial.println(BPM_Average);
-//    RFduinoBLE.sendByte(0x08);
-//    delay(75);
-//    RFduinoBLE.sendFloat(BPM_Average);
-//    delay(75);
-    //---> Insert into FRAM
     temp_data_float[0] = BPM_Average;
     Serial.print("Fram Address: "); Serial.print(fram_current_address);
     Serial.print(" BPM_Average written: "); Serial.println(temp_data_float[0]);
     FRAM_writeFloat(fram_current_address, temp_data_float);
     fram_current_address += 4;
-    // Grab temperature measurements and print them.
+    
+    
+    // PSO2 measurement
+    pso2_Average = pso2_Average / counts;
+    temp_data_float[0] = pso2_Average;
+    Serial.print("Fram Address: "); Serial.print(fram_current_address);
+    Serial.print(" pso2_Average written: "); Serial.println(temp_data_float[0]);
+    FRAM_writeFloat(fram_current_address, temp_data_float);
+    fram_current_address += 4;
+    
+    
+    // Object temperature measurement     
     float objt = tmp006.readObjTempC();
     objt = objt * (9 / 5) + 32;
 //    Serial.print("Object Temperature: "); Serial.print(objt);
 //    Serial.println("*F");
-    float diet = tmp006.readDieTempC();
-    diet = diet * (9 / 5) + 32;
-//    Serial.print("Die Temperature: "); Serial.print(diet);
-//    Serial.println("*F");
-//    RFduinoBLE.sendByte(0x05);
-//    delay(75);
-//    RFduinoBLE.sendFloat(objt);
-//    delay(75);
-//    RFduinoBLE.sendByte(0x06);
-//    delay(75);
-//    RFduinoBLE.sendFloat(diet);
-//    delay(75);
-    //---> Insert into FRAM
     temp_data_float[0] = objt;
     Serial.print("Fram Address: "); Serial.print(fram_current_address);
     Serial.print(" objt written: "); Serial.println(temp_data_float[0]);
     FRAM_writeFloat(fram_current_address, temp_data_float);
     fram_current_address += 4;
-    temp_data_float[0] = diet;
-    Serial.print("Fram Address: "); Serial.print(fram_current_address);
-    Serial.print(" diet written: "); Serial.println(temp_data_float[0]);
-    FRAM_writeFloat(fram_current_address, temp_data_float);
-    fram_current_address += 4;
-    //Galvanic Skin Response Read
-    float gsr = analogRead(4); // returns 0 to 1023, does not need to be a float
+    
+    // TMP006 Die temperature measurement
+//    fram_current_address += 4;
+//    float diet = tmp006.readDieTempC();
+//    diet = diet * (9 / 5) + 32;
+////    Serial.print("Die Temperature: "); Serial.print(diet);
+////    Serial.println("*F");
+//    temp_data_float[0] = diet;
+//    Serial.print("Fram Address: "); Serial.print(fram_current_address);
+//    Serial.print(" diet written: "); Serial.println(temp_data_float[0]);
+//    FRAM_writeFloat(fram_current_address, temp_data_float);
+//    fram_current_address += 4;
+
+    
+    // Galvanic Skin Response
+    float gsr = analogRead(4); // returns 0 to 1023
 //    Serial.print("Galvanic Skin Response: "); Serial.println(gsr);
-//    RFduinoBLE.sendByte(0x07);
-//    delay(75);
-//    RFduinoBLE.sendFloat(gsr);
-//    delay(75);
-    //---> Insert into FRAM
     temp_data_float[0] = gsr;
     Serial.print("Fram Address: "); Serial.print(fram_current_address);
     Serial.print(" gsr written: "); Serial.println(temp_data_float[0]);
     FRAM_writeFloat(fram_current_address, temp_data_float);
     fram_current_address += 4;
+    
+    
     //Next State
     prev_state = POLL_SENSORS;
     state = POLL_SENSORS;
@@ -756,13 +761,12 @@ void loop() {
   
   if (state == WAIT_TO_CONNECT) {
     Serial.println("State: WAIT_TO_CONNECT");
-
   }
   
   if (state == TRANSMIT_DATA) {
     Serial.println("State: TRANSMIT_DATA");
     /*
-    Fram read order: BPM_Average, objt, diet, gsr
+    Fram read order: BPM_Average, pso2_Average, objt, gsr
     */
     BLUE_LED_ON();
     
@@ -782,20 +786,28 @@ void loop() {
       delay(75);
       Serial.print("Fram Address: "); Serial.print(fram_bluetooth_address);
       temp_float = FRAM_readFloat(fram_bluetooth_address);
+      Serial.print(" pso2_Average: "); Serial.println(temp_float);
+      fram_bluetooth_address += 4;
+      RFduinoBLE.sendByte(0x06); 
+      delay(75);
+      RFduinoBLE.sendFloat(temp_float); // objt
+      delay(75);
+      Serial.print("Fram Address: "); Serial.print(fram_bluetooth_address);
+      temp_float = FRAM_readFloat(fram_bluetooth_address);
       Serial.print(" objt: "); Serial.println(temp_float);
       fram_bluetooth_address += 4;
       RFduinoBLE.sendByte(0x05); 
       delay(75);
       RFduinoBLE.sendFloat(temp_float); // objt
       delay(75);
-      Serial.print("Fram Address: "); Serial.print(fram_bluetooth_address);
-      temp_float = FRAM_readFloat(fram_bluetooth_address);
-      Serial.print(" diet: "); Serial.println(temp_float);
-      fram_bluetooth_address += 4;
-      RFduinoBLE.sendByte(0x06); 
-      delay(75);
-      RFduinoBLE.sendFloat(temp_float); // diet
-      delay(75);
+//      Serial.print("Fram Address: "); Serial.print(fram_bluetooth_address);
+//      temp_float = FRAM_readFloat(fram_bluetooth_address);
+//      Serial.print(" diet: "); Serial.println(temp_float);
+//      fram_bluetooth_address += 4;
+//      RFduinoBLE.sendByte(0x06); 
+//      delay(75);
+//      RFduinoBLE.sendFloat(temp_float); // diet
+//      delay(75);
       Serial.print("Fram Address: "); Serial.print(fram_bluetooth_address);
       temp_float = FRAM_readFloat(fram_bluetooth_address);
       Serial.print(" gsr: "); Serial.println(temp_float);
@@ -825,9 +837,9 @@ void loop() {
     fram_bluetooth_address += 4;
   }
 
-//  Serial.println("Bottom of Main");
-
   //Sleep for 2 minutes or until interrupt
-  RFduino_ULPDelay(MINUTES(2)); //CHANGE THIS
+  if (state != WAIT_TO_CONNECT) {
+    RFduino_ULPDelay(MINUTES(2));
+  }
 
 }
