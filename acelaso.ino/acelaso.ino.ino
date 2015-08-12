@@ -119,7 +119,7 @@ void RFduinoBLE_onDisconnect() {
 //  RED_LED_ON();
   connectedBLE = false;
   LED_OFF();
-  state = TRANSMIT_DATA;
+  state = POLL_SENSORS;
 }
 
 void RFduinoBLE_onAdvertisement(bool start) {
@@ -838,8 +838,10 @@ void loop() {
   }
 
   //Sleep for 2 minutes or until interrupt
-  if (state != WAIT_TO_CONNECT) {
-    RFduino_ULPDelay(MINUTES(2));
+  if (state != TRANSMIT_DATA) {    //TRANSMIT_DATA //WAIT_TO_CONNECT
+    RFduino_ULPDelay(MINUTES(2)); 
+//    RFduino_ULPDelay(SECONDS(10));
+
   }
 
 }
